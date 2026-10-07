@@ -1,11 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "window-controls",
-  "description": "The title bar on the loading page and on the page served by `ucode app --serve` (127.0.0.1, any port): drag, minimise, maximise, close, and the resize event. Nothing else: no shell, no files.",
-  "windows": ["main"],
+  "description": "The title bar on the loading page and on the page served by `ucode app --serve` (127.0.0.1, any port): drag, minimise, maximise, close, and the resize event. And the folder picker. Nothing else: no shell, no file access.",
+  "windows": [
+    "main"
+  ],
   "local": true,
   "remote": {
-    "urls": ["http://127.0.0.1:*/*", "http://localhost:*/*"]
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
   },
   "permissions": [
     "core:window:allow-start-dragging",
@@ -17,6 +22,7 @@
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "core:event:allow-listen",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    "dialog:allow-open"
   ]
 }

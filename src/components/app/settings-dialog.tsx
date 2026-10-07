@@ -102,14 +102,14 @@ const tapRow = cn(row, "transition-colors hover:bg-accent/60 active:bg-accent");
 const smallButton = "h-6 rounded-md px-2 text-[12px] font-medium transition-colors disabled:opacity-40";
 
 /** Output of one of ucode's commands, as a page. */
-function CommandPage({ text, folder, intro }: { text: string; folder: string; intro: string }) {
+function CommandPage({ text, folder, intro, page }: { text: string; folder: string; intro: string; page?: string }) {
   const [out, setOut] = useState<{ lines: string[] } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     setOut(null);
     setError("");
-    post("command", { text, folder }).then(setOut).catch((e) => setError(e.message));
-  }, [text, folder]);
+    (page ? get(page, { folder }) : post("command", { text, folder })).then(setOut).catch((e) => setError(e.message));
+  }, [text, folder, page]);
   return (
     <Group footer={intro}>
       <div className="px-3 py-2.5">
@@ -387,9 +387,9 @@ export function SettingsDialog(p: Props) {
             </>
           )}
 
-          {section === "skills" && <CommandPage text="/skills" folder={p.folder} intro="What ucode knows how to do. It pulls one in by itself when a request matches. Add your own as a folder with a SKILL.md under .ucode/skills." />}
-          {section === "addons" && <CommandPage text="/mcp" folder={p.folder} intro="Add-ons (MCP servers) give ucode extra tools. Add one from a terminal: ucode mcp add <name> <command>." />}
-          {section === "doctor" && <CommandPage text="/doctor" folder={p.folder} intro="Your keys, the internet, the browser ucode checks apps in, and updates. It can take a minute." />}
+          {section === "skills" && <CommandPage page="skills" text="/skills" folder={p.folder} intro="What ucode knows how to do. It pulls one in by itself when a request matches. Add your own as a folder with a SKILL.md under .ucode/skills." />}
+          {section === "addons" && <CommandPage page="addons" text="/mcp" folder={p.folder} intro="Add-ons (MCP servers) give ucode extra tools. Add one from a terminal: ucode mcp add <name> <command>." />}
+          {section === "doctor" && <CommandPage page="doctor" text="/doctor" folder={p.folder} intro="Your keys, the internet, and the browser ucode checks apps in." />}
 
           {section === "data" && (
             <Group label="History" footer="Deletes every chat in ucode. Your projects and the files ucode made stay.">

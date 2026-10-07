@@ -32,7 +32,7 @@ import {
   Agent, model, setModel, modelList, discoverModels, providerKey, openRouterKey, resetConnection, hasKeyFor, serviceFor,
   DEFAULT_MODEL, OPENROUTER_DEFAULT, BASE_URL, OPENROUTER_URL, transcribe, listSessions, loadSession, saveSession,
   removeSession, clearSessions, keyName, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
-  UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL,
+  UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL, loadSkills, readServers, USER_MCP, projectMcpFile,
 } from './ucode.mjs';
 import { WebUI } from './webui.mjs';
 
@@ -426,7 +426,6 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     entry.agent = new Agent({ cwd: folder, ui: entry.ui });
     await fs.mkdir(folder, { recursive: true });
     await entry.agent.bootstrap();
-    entry.agent.startMcp();
     active = entry;
     helpers.set(folder, entry);
     return entry;
@@ -577,6 +576,60 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     },
 
     'POST /api/pick-folder': async () => ({ path: await chooseFolder() }),
+
+    // Settings pages, read straight from ucode's files: a second or less, nothing started.
+    'GET /api/skills': async (q) => {
+      const folder = await allowedFolder(q.get('folder') || defaultFolder());
+      const list = await loadSkills({ cwd: folder });
+      return {
+        lines: list.length
+          ? list.flatMap((s) => [`${s.name}${s.triggers?.length ? '  (loads by itself)' : ''}`, `    ${s.description}`])
+          : ['No skills yet.'],
+      };
+    },
+
+    'GET /api/addons': async (q) => {
+      const folder = await allowedFolder(q.get('folder') || defaultFolder());
+      const mine = await readServers(USER_MCP).catch(() => ({}));
+      const here = await readServers(projectMcpFile(folder)).catch(() => ({}));
+      const rows = [
+        ...Object.entries(mine).map(([name, spec]) => `${name}  — every project  (${spec.url ?? [spec.command, ...(spec.args ?? [])].join(' ')})`),
+        ...Object.entries(here).map(([name, spec]) => `${name}  — this project  (${spec.url ?? [spec.command, ...(spec.args ?? [])].join(' ')})`),
+      ];
+      return { lines: rows.length ? rows : ['No add-ons yet.'] };
+    },
+
+    // "Check everything", all at once with short deadlines: a few seconds, not ucode's minute.
+    'GET /api/doctor': async () => {
+      const timed = { signal: AbortSignal.timeout(6000) };
+      const ask = async (url, headers = {}) => {
+        try { return (await fetch(url, { ...timed, headers })).status; } catch { return 0; }
+      };
+      const key = (status, set, what) => (!set ? `-  ${what} — not added (Settings → Keys)`
+        : status >= 200 && status < 300 ? `✓  ${what} — works`
+          : status === 0 ? `?  ${what} — could not check (internet?)` : `✗  ${what} — rejected: add it again in Settings → Keys`);
+      const browsers = process.platform === 'win32'
+        ? [['Microsoft Edge', path.join(process.env['ProgramFiles(x86)'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')], ['Google Chrome', path.join(process.env.ProgramFiles ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe')]]
+        : [['Google Chrome', '/Applications/Google Chrome.app'], ['Microsoft Edge', '/Applications/Microsoft Edge.app'], ['Chrome', '/usr/bin/google-chrome'], ['Chromium', '/usr/bin/chromium']];
+      const [net, google, openrouter, vercel] = await Promise.all([
+        ask('https://www.google.com/generate_204'),
+        providerKey() ? ask(`${BASE_URL}/models`, { Authorization: `Bearer ${providerKey()}` }) : 0,
+        openRouterKey() ? ask(`${OPENROUTER_URL}/key`, { Authorization: `Bearer ${openRouterKey()}` }) : 0,
+        process.env.VERCEL_TOKEN ? ask('https://api.vercel.com/v2/user', { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` }) : 0,
+      ]);
+      const browser = browsers.find(([, p]) => existsSync(p))?.[0];
+      return {
+        lines: [
+          net ? '✓  Internet — on' : '✗  Internet — off: ucode needs it to reach the AI',
+          key(google, providerKey(), 'Google key'),
+          key(openrouter, openRouterKey(), 'OpenRouter key'),
+          key(vercel, process.env.VERCEL_TOKEN, 'Vercel token (Share online)'),
+          `✓  Node.js — ${process.version}`,
+          `✓  ucode — ${UCODE_VERSION}`,
+          browser ? `✓  Browser for checking apps — ${browser}` : '-  Browser for checking apps — none found: ucode skips its own look at the app',
+        ],
+      };
+    },
 
     'POST /api/projects': async (b) => {
       const app = await readApp();

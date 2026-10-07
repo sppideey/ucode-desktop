@@ -20,11 +20,15 @@ const dir = process.env.UCODE_AGENT_DIR;
 if (!dir) throw new Error('UCODE_AGENT_DIR is not set - start the app with server/main.mjs');
 const load = (p) => import(pathToFileURL(path.join(dir, p)).href);
 
-const [loop, provider, history, attach, opener, voice, context, version, theme, shell, browser, tools] = await Promise.all([
+const [loop, provider, history, attach, opener, voice, context, version, theme, shell, browser, tools, skills, mcp] = await Promise.all([
   load('src/core/loop.js'), load('src/core/provider.js'), load('src/core/history.js'), load('src/core/attach.js'),
   load('src/core/opener.js'), load('src/core/voice.js'), load('src/core/context.js'), load('src/core/version.js'),
   load('src/ui/theme.js'), load('src/tools/shell.js'), load('src/tools/browser.js'), load('src/tools/index.js'),
+  load('src/core/skills.js'), load('src/core/mcp.js'),
 ]);
+
+export const { loadSkills } = skills;
+export const { readServers, USER_MCP, projectMcpFile } = mcp;
 
 export const { load: loadSession, save: saveSession, remove: removeSession } = history;
 export const clearSessions = async () => { await history.removeAll(); listed = null; };

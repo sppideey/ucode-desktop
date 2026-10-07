@@ -26,8 +26,12 @@ export function ProjectDialog({ open, onOpenChange, onDone }: Props) {
   const pick = async () => {
     setBusy("pick");
     try {
-      // The computer's own folder dialog opens; this waits until it is closed.
-      const { path } = await post<{ path: string | null }>("pick-folder");
+      // The computer's own folder dialog: straight from the desktop app (instant), or through the
+      // server in a browser window (it starts a helper first, so it takes a moment).
+      const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args: object) => Promise<unknown> } } }).__TAURI__;
+      const path = tauri?.core
+        ? ((await tauri.core.invoke("plugin:dialog|open", { options: { directory: true, multiple: false, title: "Choose a folder for ucode" } })) as string | null)
+        : (await post<{ path: string | null }>("pick-folder")).path;
       if (!path) return;
       await post("projects", { add: path });
       finish(path);

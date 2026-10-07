@@ -80,6 +80,7 @@ fn update_now(handle: AppHandle) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Server::default())
         .setup(|app| {
             update_now(app.handle().clone());
