@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AppWindow, BookOpen, ChevronRight, FolderOpen, Globe, LayoutGrid, MessageSquare, Ellipsis, Package, Plus, Search } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, ChevronRight, FolderOpen, MessageSquare, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { get, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { type ChatMeta, type Project, type View, dayOf, folderName, hueOf } from "./data";
 
 const openTarget = (target: string) => post("open", { target }).catch((e) => toast.error(e.message));
@@ -95,50 +94,7 @@ export function ChatsPage({ chats, onView }: { chats: ChatMeta[]; onView: (v: Vi
   );
 }
 
-type App = { name: string; path: string; folder: string; at: number; page: boolean };
 
-/** The apps ucode has made: open one, share it, or keep working on it. */
-export function AppsPage({ onView, onPreview, onShare }: { onView: (v: View) => void; onPreview: (path: string) => void; onShare: (app: App) => void }) {
-  const [apps, setApps] = useState<App[] | null>(null);
-  useEffect(() => { get("apps").then((r) => setApps(r.apps)).catch(() => setApps([])); }, []);
-  const pill = "h-6 rounded-full bg-accent px-3 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/15";
-  return (
-    <Page title="Apps you built" wide>
-      {apps && apps.length === 0 && (
-        <Empty icon={LayoutGrid} title="No apps yet" text="When ucode builds something, it lands here. Open it, share it online, or keep working on it." action="Build your first app" onAction={() => onView({ kind: "home" })} />
-      )}
-      {apps && apps.length > 0 && (
-        <Group>
-          {apps.map((a) => (
-            <div key={a.path} className="flex items-center gap-3 px-3 py-2">
-              <div className="grid size-8 shrink-0 place-items-center rounded-lg text-white" style={{ background: `oklch(0.65 0.14 ${hueOf(a.path)})` }}>
-                {a.page ? <AppWindow className="size-4" /> : <Package className="size-4" />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium">{a.name}</p>
-                <p className="truncate text-[11.5px] text-muted-foreground">{dayOf(a.at)} · {folderName(a.folder)}</p>
-              </div>
-              {a.page && <button className={pill} onClick={() => onPreview(a.path)}>Open</button>}
-              <button className={pill} onClick={() => onShare(a)}>Share</button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary transition-colors hover:bg-primary/15" aria-label={`More for ${a.name}`}>
-                    <Ellipsis className="size-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52 rounded-xl p-1 backdrop-blur-xl">
-                  <DropdownMenuItem className="py-1.5 text-[13px]" onSelect={() => onShare(a)}><Globe /> Share online</DropdownMenuItem>
-                  <DropdownMenuItem className="py-1.5 text-[13px]" onSelect={() => onView({ kind: "home", folder: a.path })}><MessageSquare /> Keep working on it</DropdownMenuItem>
-                  <DropdownMenuItem className="py-1.5 text-[13px]" onSelect={() => openTarget(a.path)}><FolderOpen /> Open folder</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ))}
-        </Group>
-      )}
-    </Page>
-  );
-}
 
 /** One project: its folder, its chats, and a new one inside it. */
 export function ProjectPage({ project, chats, onView, onNotes }: { project: Project; chats: ChatMeta[]; onView: (v: View) => void; onNotes: () => void }) {

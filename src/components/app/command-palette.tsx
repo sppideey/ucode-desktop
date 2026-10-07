@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderClosed, FolderPlus, KeyRound, LayoutGrid, MessageSquare, Moon, Plus, Settings, Sparkles, Stethoscope } from "lucide-react";
+import { FolderClosed, FolderPlus, KeyRound, MessageSquare, Moon, Plus, Settings, Sparkles, Stethoscope } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
   Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut,
@@ -53,7 +53,6 @@ export function CommandPalette({ open, onOpenChange, chats, projects, onView, on
             <CommandItem onSelect={run(() => onSettings("models"))}><Sparkles /> Switch model</CommandItem>
             <CommandItem onSelect={run(() => onSettings("keys"))}><KeyRound /> Keys</CommandItem>
             <CommandItem onSelect={run(() => onView({ kind: "chats" }))}><MessageSquare /> All chats</CommandItem>
-            <CommandItem onSelect={run(() => onView({ kind: "apps" }))}><LayoutGrid /> Apps you built</CommandItem>
             <CommandItem onSelect={run(() => setTheme(resolvedTheme === "light" ? "dark" : "light"))}><Moon /> Switch light and dark</CommandItem>
             <CommandItem onSelect={run(() => onSettings("doctor"))}><Stethoscope /> Check that everything works</CommandItem>
             <CommandItem onSelect={run(() => onSettings())}><Settings /> Settings <CommandShortcut>Ctrl ,</CommandShortcut></CommandItem>

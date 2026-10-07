@@ -1,10 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  AppWindow, Check, ChevronRight, CircleAlert, Copy, Dot, FilePen, FileText, Globe, LoaderCircle, RotateCcw, Search,
-  ShieldQuestion, Terminal, X, type LucideIcon,
-} from "lucide-react";
+import { AppWindow, Check, ChevronRight, CircleAlert, Copy, Dot, FilePen, FileText, Globe, LoaderCircle, RotateCcw, Search, ShieldQuestion, Terminal, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { post } from "@/lib/api";
@@ -46,80 +43,71 @@ function Action({ label, onClick, children }: { label: string; onClick: () => vo
   );
 }
 
-/** What kind of work a step is, from ucode's label ("Reading files", "Running npm test", ...). */
-const kinds: [RegExp, LucideIcon][] = [
-  [/^(Reading|Listing|Mapping|Looking up|Asking what)\b/, FileText],
-  [/^(Writing|Editing|Renaming|Adding|Fixing|Updating)\b/, FilePen],
-  [/^Creating\b/, AppWindow],
-  [/^(Running|Deploying|Starting)\b/, Terminal],
-  [/^(Looking at|Opening)\b/, Globe],
-  [/^(Searching|Finding|Loading)\b/, Search],
+/** Each of ucode's steps in plain words ("Reading index.html" is "Reading your project"). */
+const plainSteps: [RegExp, string, LucideIcon][] = [
+  [/^Creating (.+?) from the .*starter/i, "Building $1", AppWindow],
+  [/^Creating\b/i, "Building your app", AppWindow],
+  [/^(Writing|Editing|Renaming|Adding|Fixing|Updating|Changing)\b/i, "Writing the code", FilePen],
+  [/^(Reading|Listing|Mapping|Looking up|Asking what|Finding|Loading|Outlining)\b/i, "Reading your project", FileText],
+  [/^(Running|Starting)\b.*\b(install|add)\b/i, "Getting what it needs", Terminal],
+  [/^(Running|Starting)\b.*\b(test|check|lint|tsc|build)\b/i, "Testing it", Terminal],
+  [/^Deploying\b/i, "Putting it online", Globe],
+  [/^(Running|Starting)\b/i, "Running it", Terminal],
+  [/^(Looking at|Opening|Checking)\b/i, "Checking it works", Globe],
+  [/^(Searching)\b/i, "Looking things up", Search],
 ];
-const iconOf = (text: string) => kinds.find(([re]) => re.test(text))?.[1] ?? Dot;
-const writes = (text: string) => /^(Writing|Editing|Creating|Renaming|Adding)\b/.test(text);
-
-/** The label, with commands, file names, paths and links in mono. */
-function Label({ text }: { text: string }) {
-  const run = /^(Running) (?!\d+ commands together$)(.+?)( in the background)?$/.exec(text);
-  if (run) return <>{run[1]} <code className="font-mono text-[11.5px] text-foreground">{run[2]}</code>{run[3]}</>;
-  return text.split(/(\S*[./\\]\S*\w)/).map((part, i) =>
-    i % 2 ? <code key={i} className="font-mono text-[11.5px] text-foreground">{part}</code> : part);
-}
+const plainStep = (text: string): [string, LucideIcon] => {
+  for (const [re, said, icon] of plainSteps) if (re.test(text)) return [text.replace(re, said).replace(/^(Building .{1,40}?) with.*$/, "$1"), icon];
+  return ["Working on it", Dot];
+};
 
 const took = (ms: number) => {
   const s = Math.round(ms / 1000);
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 };
 
-/** The tool log: one row per step, open while ucode works, folded into one line after. */
+/** What ucode is doing, in plain words: one line per kind of work, open while it works, one line after. */
 function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: boolean }) {
   const [open, setOpen] = useState<boolean | null>(null); // null: follow live
   const { steps, count } = item;
   const work = steps.filter((s) => !s.narration);
   const total = work.length || count || 0;
-  if (!total) return steps.map((s, i) => <p key={i} className="text-[12px] italic leading-snug text-muted-foreground">{s.text}</p>);
-  const failed = work.filter((s) => s.ok === false).length;
-  // ponytail: one write step counts as one file (or its "N files" result), so a file written twice counts twice.
-  const files = work.filter((s) => writes(s.text)).reduce((n, s) => n + Number(/(\d+) files?\b/.exec(s.result ?? "")?.[1] ?? 1), 0);
+  if (!total) return null;
+  // The same kind of work twice in a row is one line: "Writing the code", not five file names.
+  const rows: { said: string; Icon: LucideIcon; ok: boolean; at: number }[] = [];
+  work.forEach((s, i) => {
+    const [said, Icon] = plainStep(s.text);
+    const last = rows.at(-1);
+    if (last && last.said === said) { last.ok = last.ok && s.ok !== false; last.at = i; }
+    else rows.push({ said, Icon, ok: s.ok !== false, at: i });
+  });
   const ms = item.start && item.end ? item.end - item.start : 0;
-  const expanded = steps.length > 0 && (open ?? live);
-  const summary = [
-    ms >= 1000 && `Worked ${took(ms)}`,
-    `${total} step${total === 1 ? "" : "s"}`,
-    files > 0 && `${files} file${files === 1 ? "" : "s"}`,
-  ].filter(Boolean).join(" · ");
+  const expanded = rows.length > 0 && (open ?? live);
+  const summary = ms >= 1000 ? `Done in ${took(ms)}` : "Done";
 
   return (
     <div className="text-[12.5px]">
       <button
         type="button"
         onClick={() => setOpen(!expanded)}
-        disabled={!steps.length}
+        disabled={!rows.length}
         aria-expanded={expanded}
         className="-ml-1 flex h-6 items-center gap-1 rounded-md px-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none"
       >
-        {steps.length > 0 && <ChevronRight className={cn("size-3.5 transition-transform duration-150", expanded && "rotate-90")} />}
+        {rows.length > 0 && <ChevronRight className={cn("size-3.5 transition-transform duration-150", expanded && "rotate-90")} />}
         {live ? <span className="shimmer font-medium">Working</span> : <span>{summary}</span>}
-        {live && <span className="text-muted-foreground/70">· {total} step{total === 1 ? "" : "s"}</span>}
-        {failed > 0 && <span className="text-destructive">· {failed} failed</span>}
       </button>
       {expanded && (
         <ul className="mt-1 overflow-hidden rounded-lg border bg-muted/40">
-          {steps.map((s, i) => {
-            if (s.narration) return <li key={i} className="border-t px-2.5 py-1 text-[12px] italic text-muted-foreground first:border-t-0">{s.text}</li>;
-            const running = live && i === steps.length - 1 && s.result === undefined;
-            const Icon = iconOf(s.text);
+          {rows.map((r, i) => {
+            const running = live && i === rows.length - 1 && work[r.at]?.result === undefined;
             return (
-              <li key={i} className="flex min-h-7 items-start gap-2 border-t px-2.5 py-[5px] first:border-t-0">
-                {s.ok === false ? <X className="mt-px size-3.5 shrink-0 text-destructive" strokeWidth={2.5} />
-                  : running ? <LoaderCircle className="mt-px size-3.5 shrink-0 animate-spin text-primary" />
-                    : <Icon className="mt-px size-3.5 shrink-0 text-muted-foreground" />}
-                <span className={cn("min-w-0 flex-1 break-words leading-[18px]", running ? "text-foreground" : "text-foreground/80")}><Label text={s.text} /></span>
-                {s.result && (
-                  <span title={s.result} className={cn("max-w-[45%] shrink-0 truncate text-right text-[11.5px] leading-[18px]", s.ok === false ? "text-destructive" : "text-muted-foreground")}>
-                    {s.result}
-                  </span>
-                )}
+              <li key={i} className="flex min-h-7 items-center gap-2 border-t px-2.5 py-[5px] first:border-t-0">
+                {running ? <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
+                  : r.ok ? <Check className="size-3.5 shrink-0 text-success" strokeWidth={2.5} />
+                    : <r.Icon className="size-3.5 shrink-0 text-muted-foreground" />}
+                <span className={cn("min-w-0 flex-1 leading-[18px]", running ? "text-foreground" : "text-foreground/80")}>{r.said}</span>
+                {!r.ok && !running && <span className="shrink-0 text-[11.5px] text-muted-foreground">needed another try</span>}
               </li>
             );
           })}
@@ -129,8 +117,21 @@ function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: b
   );
 }
 
-/** ucode's design header ("App: X | Tone: Y | Accent: ..."), which is for ucode and not for you. */
-const tidy = (text: string) => text.split("\n").filter((l) => !/^App: .*\| Tone:/.test(l)).join("\n").replace(/^\s*\n/, "");
+/**
+ * An answer without the workings: no design header ("App: X | Tone: Y"), no file:// links
+ * (the app is in the preview beside the chat), no "or open delta/index.html in your browser".
+ */
+const tidy = (text: string) => text
+  .split("\n")
+  .filter((l) => !/^App: .*\| Tone:/.test(l) && !/^\(?\s*or open\b.*\bin your browser\s*\)?\.?$/i.test(l.trim()))
+  .map((l) => l.replace(/\.?\s*Open it here:\s*file:\/\/\S+/i, ". It is open in the preview on the right.").replace(/file:\/\/\/?\S+/g, "the preview"))
+  .join("\n")
+  .replace(/\.\. /g, ". ")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim();
+
+/** ucode's own notes that are about its workings, not about your app: not shown. */
+const technical = /fold|output limit|token|context|mcp|\.md\b|\.(?:m?js|ts|tsx|html|css|json)\b|[A-Z]:\\|\/[\w.-]+\/|rate limit|retry|per-minute|stalled|backup model|turn cancelled|skill/i;
 
 const CLAMP = 168; // about 8 lines at 13.5px
 
@@ -214,7 +215,12 @@ function Question({ item }: { item: Extract<Item, { kind: "question" }> }) {
         <ShieldQuestion className="mt-px size-3.5 shrink-0 text-primary" />
         <span className="min-w-0 break-words">{item.action}</span>
       </p>
-      {item.detail && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground">{item.detail}</pre>}
+      {item.detail && (
+        <details className="mt-1.5 text-[12px] text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">Details</summary>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2.5 py-1.5 font-mono text-[11.5px]">{item.detail}</pre>
+        </details>
+      )}
       {!item.answered ? (
         <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
           <button type="button" className={cn(small, "text-muted-foreground hover:bg-accent hover:text-foreground")} onClick={() => answer(false)}>Don&apos;t allow</button>
@@ -262,6 +268,7 @@ export function Chat({ items, spinner, busy, plan, models, model, onModel, mode,
             if (m.kind === "reply") return <Reply key={m.id} item={m} last={i === items.length - 1} busy={busy} onUndo={onUndo} />;
             if (m.kind === "steps") return <Steps key={m.id} item={m} live={busy && i === items.length - 1} />;
             if (m.kind === "question") return <Question key={m.id} item={m} />;
+            if (m.kind === "note" && technical.test(m.text)) return null;
             if (m.kind === "note") return <p key={m.id} className="whitespace-pre-wrap text-[12px] leading-snug text-muted-foreground">{m.text}</p>;
             if (m.kind === "lines") {
               return (

@@ -68,6 +68,9 @@ const same = (a, b) => {
 const cookieOf = (req, name) =>
   String(req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=')).find(([k]) => k === name)?.[1];
 
+/** A message asking for the app to go online: "deploy it", "and put it online", "publish it", "give me a link". */
+const DEPLOY = /\b(?:deploy|publish|put (?:it |this |them )?(?:up )?online|share (?:it |this )?online|host (?:it|this)|make (?:it|this) live|go live|(?:give|get) me a (?:live )?link)\b/i;
+
 /** A file under `root`, or null when the path would leave it. */
 function within(root, rel) {
   const abs = path.resolve(root, `.${path.sep}${String(rel ?? '').replace(/^[/\\]+/, '')}`);
@@ -199,47 +202,6 @@ export function transcript(messages = []) {
   return items;
 }
 
-/** App folders in a folder: itself when it is one, else its subfolders with a page or a package.json. */
-/**
- * The page app a chat made, from the files its tool calls wrote: the last one
- * that is a folder with an index.html (and no package.json, which needs its
- * own server). Lets an old chat show its app again in the preview panel.
- */
-function appOf(session) {
-  const cwd = session.cwd;
-  let found = null;
-  for (const m of session.messages ?? []) {
-    for (const call of m.toolCalls ?? []) {
-      const a = call.args ?? {};
-      const listed = [a.path, a.folder, a.name, ...(Array.isArray(a.files) ? a.files.map((f) => f?.path) : []), ...(Array.isArray(a.edits) ? a.edits.map((e) => e?.path) : [])];
-      for (const p of listed) {
-        if (typeof p !== 'string' || !p.trim() || isUnc(p)) continue;
-        const top = path.relative(cwd, path.resolve(cwd, p)).split(/[\\/]/)[0];
-        if (!top || top.startsWith('..')) continue;
-        const dir = path.join(cwd, top);
-        if (existsSync(path.join(dir, 'index.html')) && !existsSync(path.join(dir, 'package.json'))) found = dir;
-      }
-    }
-  }
-  return found;
-}
-
-async function appsIn(folder) {
-  const found = [];
-  const isApp = (dir) => existsSync(path.join(dir, 'index.html')) || existsSync(path.join(dir, 'package.json'));
-  // The name the app gives itself (its page's <title>), else its folder's.
-  const nameOf = (dir) => {
-    try { return /<title>\s*([^<]{1,60}?)\s*<\/title>/i.exec(readFileSync(path.join(dir, 'index.html'), 'utf8'))?.[1] || path.basename(dir); } catch { return path.basename(dir); }
-  };
-  // An app saved straight into the folder is one app; the apps in its subfolders are still listed.
-  if (isApp(folder)) found.push({ name: nameOf(folder), path: folder, folder, at: statSync(folder).mtimeMs });
-  for (const e of await fs.readdir(folder, { withFileTypes: true }).catch(() => [])) {
-    if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
-    const dir = path.join(folder, e.name);
-    if (isApp(dir)) found.push({ name: nameOf(dir), path: dir, folder, at: statSync(dir).mtimeMs });
-  }
-  return found;
-}
 
 export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}) {
   const token = randomBytes(24).toString('hex');
@@ -269,13 +231,13 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
 
   // Which provider the user chose: its default model, unless a model of it is already in use.
   const providerNow = () => (serviceFor(model()) === 'openrouter' ? 'openrouter' : 'google');
-  const useProvider = (provider) => {
+  const chooseProvider = (provider) => {
     if (provider !== 'google' && provider !== 'openrouter') throw Object.assign(new Error('no such provider'), { status: 400 });
     if (providerNow() !== provider) setModel(provider === 'openrouter' ? OPENROUTER_DEFAULT : DEFAULT_MODEL);
     for (const entry of chats.values()) { entry.agent.preferred = model(); entry.agent.session.model = model(); }
   };
   const saved = (await readApp()).provider;
-  if (saved && !process.env.UCODE_MODEL) { try { useProvider(saved); } catch { /* an old file */ } }
+  if (saved && !process.env.UCODE_MODEL) { try { chooseProvider(saved); } catch { /* an old file */ } }
   // New free models are looked for once, in the background: the window never waits on the network for it.
   discoverModels().catch(() => []);
   // The chat list is read once now; after that only changed files are read again.
@@ -385,10 +347,23 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
   }
 
   /** Make this chat's agent the one the tools work for. */
-  async function use(entry) {
+  async function enter(entry) {
     if (active !== entry) { await entry.agent.activate(); active = entry; }
     entry.agent.preferred = model();
     entry.ui.mode = mode;
+  }
+
+  /** Puts the chat's newest app online, and says where in one line. */
+  async function deployNow(entry, send) {
+    if (!process.env.VERCEL_TOKEN) {
+      send({ type: 'reply', text: 'To put it online, add a free Vercel token in **Settings → Keys** — the steps are there. Then say "put it online".' });
+      return;
+    }
+    const from = entry.events.length;
+    await entry.agent.command('/deploy');
+    const said = entry.events.slice(from).map((e) => [e.text, ...(e.lines ?? [])].join(' ')).join(' ');
+    const link = /https:\/\/[\w.-]+\.vercel\.app\S*/.exec(said)?.[0]?.replace(/[).,]+$/, '');
+    send({ type: 'reply', text: link ? `It is online: ${link}` : 'It could not go online this time — the reason is above. Say "put it online" to try again.' });
   }
 
   async function runTurn(entry, text, files) {
@@ -397,10 +372,16 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     const send = emitFor(entry);
     send({ type: 'user', text, files: files.map((f) => path.basename(f)) });
     try {
-      await use(entry);
+      await enter(entry);
       for (const f of files) entry.ui.addAttachment(f);
       if (text.startsWith('/')) await entry.agent.command(text);
-      else await entry.agent.turn(text);
+      // Only asking to deploy ("put it online", "deploy it"): no need to ask the AI anything.
+      // A question about it ("how do I deploy?") goes to the AI like any other.
+      else if (DEPLOY.test(text) && text.split(/\s+/).length <= 6 && !/^(?:how|what|why|when|where|which|who)\b/i.test(text)) await deployNow(entry, send);
+      else {
+        await entry.agent.turn(text);
+        if (DEPLOY.test(text) && entry.agent.apps?.length && !entry.agent.endedSilently) await deployNow(entry, send);
+      }
     } catch (err) {
       entry.ui.error(err);
     } finally {
@@ -412,7 +393,7 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
   /** A settings command (/doctor, /skills...), its lines collected for the page that asked. */
   async function capture(entry, text) {
     if (running) throw Object.assign(new Error('ucode is busy in a chat — wait for it or press stop'), { status: 409 });
-    await use(entry);
+    await enter(entry);
     entry.ui.capture = [];
     try {
       await entry.agent.command(text);
@@ -517,7 +498,7 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     },
 
     'POST /api/provider': async (b) => {
-      useProvider(String(b.provider));
+      chooseProvider(String(b.provider));
       await writeApp({ ...(await readApp()), provider: String(b.provider) });
       return { provider: providerNow(), model: model(), ready: hasKeyFor() };
     },
@@ -740,12 +721,6 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       return { url: previewUrl(path.resolve(String(b.target))) };
     },
 
-    'GET /api/apps': async () => {
-      const app = await readApp();
-      const all = [];
-      for (const folder of new Set([defaultFolder(), ...app.projects])) all.push(...(await appsIn(folder)));
-      return { apps: all.sort((a, b) => b.at - a.at).map((a) => ({ ...a, page: existsSync(path.join(a.path, 'index.html')) })) };
-    },
 
     'POST /api/command': async (b) => {
       const text = String(b.text ?? '').trim();

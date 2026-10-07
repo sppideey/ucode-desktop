@@ -8,13 +8,14 @@ Say what you want built, watch it being made, click around in it, undo anything.
 ## What it does
 
 - **Chat with ucode** — type, speak (mic), or drop in a picture or file. Build mode makes the changes; Plan mode only plans.
-- **Watch it work** — every step live, and a question before anything risky: *Allow once*, *Always allow*, or *Don't allow*.
+- **Watch it work** — every step live, in plain words, and a question before anything risky: *Allow once*, *Always allow*, or *Don't allow*.
 - **See your app** — a live preview beside the chat, in computer or phone size.
 - **Code and changes** — read every file, see what changed in green and red, and **Undo** a turn or all of them.
-- **Share online** — one click puts the app on the internet and gives you a link (free Vercel token).
-- **Projects and chats** — open any folder, keep its chats together, rename or delete them, search everything with Ctrl+K.
+- **Share online** — one click, or just say it: "make me a quiz app and put it online" builds it and gives you the link (free Vercel token).
+- **Your chats** — every chat in the sidebar, each with Rename and Delete; search everything with Ctrl+K; work in any folder you open.
 - **Your choice of free AI** — Google Gemini or OpenRouter (NVIDIA Nemotron, Gemma). No paid models.
 - **Settings in plain words** — keys, models, permissions, project notes, skills, add-ons, and a check that everything works.
+- **Updates itself** — a new version installs on its own and the app opens again on it.
 
 ## Install
 

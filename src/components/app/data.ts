@@ -41,7 +41,6 @@ export type View =
   | { kind: "home"; folder?: string | null }
   | { kind: "chat"; id: string }
   | { kind: "chats" }
-  | { kind: "apps" }
   | { kind: "project"; path: string };
 
 export const providerName: Record<Provider, string> = { google: "Google", openrouter: "OpenRouter" };

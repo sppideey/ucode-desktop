@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, LoaderCircle, PanelLeft, PanelRight } from "lucide-react";
+import { LoaderCircle, PanelLeft, PanelRight } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type ApiError, get, post } from "@/lib/api";
 import { type Update, canUpdate, checkForUpdate, installUpdate } from "@/lib/updates";
 import { cn } from "@/lib/utils";
@@ -14,7 +12,7 @@ import { CommandPalette } from "./command-palette";
 import { type ChatMeta, type Event, type Item, type Provider, type State, type View, folderName, sameFolder } from "./data";
 import { Home } from "./home";
 import { apply, fromTranscript } from "./items";
-import { AppsPage, ChatsPage, ProjectPage } from "./lists";
+import { ChatsPage, ProjectPage } from "./lists";
 import { Logo } from "./logo";
 import { ConfirmDialog, NameDialog } from "./name-dialog";
 import { PreviewPanel } from "./preview-panel";
@@ -89,7 +87,6 @@ export function AppShell() {
   const [projectDialog, setProjectDialog] = useState(false);
   const [renaming, setRenaming] = useState<ChatMeta | null>(null);
   const [deleting, setDeleting] = useState<ChatMeta | null>(null);
-  const [shown, setShown] = useState<{ url: string; name: string } | null>(null);
   const [clearing, setClearing] = useState(false);
   const loaded = useRef(new Set<string>()); // chats whose saved conversation is in `items`
   const arriving = useRef(new Map<string, Event[]>()); // events for a chat while it is being fetched
@@ -155,6 +152,7 @@ export function AppShell() {
 
   // Your name and colour live in this window, not in ucode. ?theme= is for screenshots.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read after the first render, to match the page built ahead of time
     setName(readLocal("ucode-name") ?? "");
     // An iOS system colour, as "#rrggbb". An older number (a hue) is ignored.
     const accent = readLocal("ucode-accent");
@@ -396,14 +394,6 @@ export function AppShell() {
 
   const openFolder = (path: string) => post("open", { target: path }).catch((e) => oops(e, "Could not open the folder"));
 
-  const showApp = async (path: string) => {
-    try {
-      const { url } = await post<{ url: string }>("preview", { target: path });
-      setShown({ url, name: folderName(path) });
-    } catch (e) {
-      oops(e, "Could not open the app");
-    }
-  };
 
   // Keys for the whole window. Esc stops the turn on screen, unless it is closing a menu or a box.
   useEffect(() => {
@@ -545,13 +535,6 @@ export function AppShell() {
               />
             ))}
             {view.kind === "chats" && <ChatsPage chats={chats} onView={go} />}
-            {view.kind === "apps" && (
-              <AppsPage
-                onView={go}
-                onPreview={showApp}
-                onShare={(app) => send(`/deploy ${app.name}`, [], { folder: app.folder })}
-              />
-            )}
             {view.kind === "project" && (
               <ProjectPage
                 project={project ?? { path: view.path, name: folderName(view.path), exists: true }}
@@ -649,25 +632,6 @@ export function AppShell() {
         action="Delete all"
         onConfirm={clearChats}
       />
-      <Dialog open={shown !== null} onOpenChange={(v) => !v && setShown(null)}>
-        <DialogContent className="flex h-[85vh] max-w-[1100px] flex-col gap-3 p-3 sm:max-w-[1100px]">
-          <div className="flex items-center gap-2 pr-9">
-            <DialogTitle className="truncate text-[14px]">{shown?.name}</DialogTitle>
-            <DialogDescription className="sr-only">Your app, running here so you can click around in it.</DialogDescription>
-            <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={() => shown && post("open", { target: shown.url }).catch((e) => oops(e))}>
-              <ExternalLink className="size-3.5" /> Open in browser
-            </Button>
-          </div>
-          {shown && (
-            <iframe
-              src={shown.url}
-              title={shown.name}
-              className="min-h-0 w-full flex-1 rounded-lg border bg-white"
-              sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
