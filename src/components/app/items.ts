@@ -10,7 +10,8 @@ const lastSteps = (items: Item[]) => {
 function addStep(items: Item[], step: Step): Item[] {
   const group = lastSteps(items);
   if (group) return [...items.slice(0, -1), { ...group, steps: [...group.steps, step] }];
-  return [...items, { kind: "steps", id: newId(), steps: [step] }];
+  // ponytail: times are when the window saw the events, so a replayed turn reads ~0s (and the duration is hidden).
+  return [...items, { kind: "steps", id: newId(), steps: [step], start: Date.now() }];
 }
 
 /** One event applied to a chat's items. Events that are not about the chat's content leave it alone. */
@@ -28,7 +29,7 @@ export function apply(items: Item[], e: Event): Item[] {
       if (!group || !group.steps.length) return items;
       const steps = [...group.steps];
       steps[steps.length - 1] = { ...steps[steps.length - 1], result: text, ok: e.ok !== false };
-      return [...items.slice(0, -1), { ...group, steps }];
+      return [...items.slice(0, -1), { ...group, steps, end: Date.now() }];
     }
     case "streamBegin":
       return [...items, { kind: "reply", id: newId(), text: "", streaming: true }];

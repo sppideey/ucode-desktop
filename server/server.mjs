@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import {
   Agent, model, setModel, modelList, discoverModels, providerKey, openRouterKey, resetConnection, hasKeyFor, serviceFor,
   DEFAULT_MODEL, OPENROUTER_DEFAULT, BASE_URL, OPENROUTER_URL, transcribe, listSessions, loadSession, saveSession,
-  removeSession, keyName, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
+  removeSession, clearSessions, keyName, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
   UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL,
 } from './ucode.mjs';
 import { WebUI } from './webui.mjs';
@@ -200,6 +200,30 @@ export function transcript(messages = []) {
 }
 
 /** App folders in a folder: itself when it is one, else its subfolders with a page or a package.json. */
+/**
+ * The page app a chat made, from the files its tool calls wrote: the last one
+ * that is a folder with an index.html (and no package.json, which needs its
+ * own server). Lets an old chat show its app again in the preview panel.
+ */
+function appOf(session) {
+  const cwd = session.cwd;
+  let found = null;
+  for (const m of session.messages ?? []) {
+    for (const call of m.toolCalls ?? []) {
+      const a = call.args ?? {};
+      const listed = [a.path, a.folder, a.name, ...(Array.isArray(a.files) ? a.files.map((f) => f?.path) : []), ...(Array.isArray(a.edits) ? a.edits.map((e) => e?.path) : [])];
+      for (const p of listed) {
+        if (typeof p !== 'string' || !p.trim() || isUnc(p)) continue;
+        const top = path.relative(cwd, path.resolve(cwd, p)).split(/[\\/]/)[0];
+        if (!top || top.startsWith('..')) continue;
+        const dir = path.join(cwd, top);
+        if (existsSync(path.join(dir, 'index.html')) && !existsSync(path.join(dir, 'package.json'))) found = dir;
+      }
+    }
+  }
+  return found;
+}
+
 async function appsIn(folder) {
   const found = [];
   const isApp = (dir) => existsSync(path.join(dir, 'index.html')) || existsSync(path.join(dir, 'package.json'));
@@ -316,7 +340,12 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
 
   const emitFor = (entry) => (event) => {
     const full = { chat: entry.id, ...event };
-    if (event.type === 'preview') full.url = previewUrl(event.target);
+    if (event.type === 'preview') {
+      const app = entry.agent.apps?.at(-1);
+      const page = app && !existsSync(path.join(app, 'package.json')) && existsSync(path.join(app, 'index.html'))
+        ? path.join(app, 'index.html') : null;
+      full.url = /^https?:\/\/(?:localhost|127\.0\.0\.1)[:/]/i.test(event.target) && page ? previewUrl(page) : previewUrl(event.target);
+    }
     entry.events.push(full);
     broadcast(full);
   };
@@ -440,8 +469,11 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       const id = chatId(q.get('id'));
       const live = chats.get(id);
       const session = live?.agent.session ?? (await loadSession(id));
+      const made = live?.agent.apps?.at(-1);
+      const app = made && existsSync(path.join(made, 'index.html')) && !existsSync(path.join(made, 'package.json')) ? made : appOf(session);
       return {
         id, title: session.title, folder: session.cwd,
+        preview: app ? previewUrl(path.join(app, 'index.html')) : null,
         items: transcript(session.messages),
         // A turn still running: what has happened in it so far.
         live: running === id ? live.events : [],
@@ -532,6 +564,15 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       chats.get(id)?.agent.mcp?.close();
       chats.delete(id);
       await removeSession(id);
+      return { ok: true };
+    },
+
+    'POST /api/chats/clear': async () => {
+      if (running) throw Object.assign(new Error('ucode is still working in a chat — stop it first'), { status: 409 });
+      for (const entry of chats.values()) entry.agent.mcp?.close();
+      chats.clear();
+      active = null;
+      await clearSessions();
       return { ok: true };
     },
 

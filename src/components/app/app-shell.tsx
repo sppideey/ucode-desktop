@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, LoaderCircle } from "lucide-react";
+import { ExternalLink, LoaderCircle, PanelLeft, PanelRight } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type ApiError, get, post } from "@/lib/api";
@@ -18,16 +15,16 @@ import { Home } from "./home";
 import { apply, fromTranscript } from "./items";
 import { AppsPage, ChatsPage, ProjectPage } from "./lists";
 import { Logo } from "./logo";
-import { NameDialog } from "./name-dialog";
+import { ConfirmDialog, NameDialog } from "./name-dialog";
 import { PreviewPanel } from "./preview-panel";
 import { ProjectDialog } from "./project-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
-import { TitleBar } from "./title-bar";
+import { CLEAR_OF_CONTROLS, DragStrip, IconButton, WindowControls, useInTauri } from "./title-bar";
 
 type Plan = { text: string; done?: boolean }[];
 type Saved = { role: string; text?: string; count?: number };
-type Opened = { title: string; folder: string; items: Saved[]; live: Event[]; busy: boolean };
+type Opened = { title: string; folder: string; items: Saved[]; live: Event[]; busy: boolean; preview?: string | null };
 /** What the window knows about a chat before the saved list does: its folder, its name, when it began here. */
 type Known = { title?: string; folder?: string; startedAt?: string };
 
@@ -92,11 +89,13 @@ export function AppShell() {
   const [renaming, setRenaming] = useState<ChatMeta | null>(null);
   const [deleting, setDeleting] = useState<ChatMeta | null>(null);
   const [shown, setShown] = useState<{ url: string; name: string } | null>(null);
+  const [clearing, setClearing] = useState(false);
   const loaded = useRef(new Set<string>()); // chats whose saved conversation is in `items`
   const arriving = useRef(new Map<string, Event[]>()); // events for a chat while it is being fetched
   const viewRef = useRef(view);
   const busyRef = useRef(busyChat);
   const { setTheme } = useTheme();
+  const tauri = useInTauri();
 
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => { busyRef.current = busyChat; }, [busyChat]);
@@ -225,6 +224,8 @@ export function AppShell() {
           if (plan && Array.isArray(plan.items)) setPlans((all) => ({ ...all, [id]: plan.items as Plan }));
         }
         if (shownUrl && typeof shownUrl.url === "string") setPreviews((all) => ({ ...all, [id]: shownUrl.url as string }));
+        // An earlier chat's app, from its folder, unless this window already shows one.
+        else if (r.preview) setPreviews((all) => (all[id] ? all : { ...all, [id]: r.preview as string }));
       })
       .catch((e) => {
         arriving.current.delete(id);
@@ -335,6 +336,25 @@ export function AppShell() {
     refresh();
   };
 
+  /** Every chat gone: the server's, and what this window kept of them. Projects and files stay. */
+  const clearChats = async () => {
+    try {
+      await post("chats/clear");
+      loaded.current.clear();
+      setItems({});
+      setKnown({});
+      setPlans({});
+      setSpinners({});
+      setPreviews({});
+      setSettings((s) => ({ ...s, open: false }));
+      go({ kind: "home" });
+      toast("All chats cleared");
+    } catch (e) {
+      oops(e, "Could not clear them");
+    }
+    refresh();
+  };
+
   const openFolder = (path: string) => post("open", { target: path }).catch((e) => oops(e, "Could not open the folder"));
 
   const showApp = async (path: string) => {
@@ -394,7 +414,6 @@ export function AppShell() {
     const asked = (items[id] ?? []).find((i) => i.kind === "user");
     return asked?.kind === "user" ? asked.text.slice(0, 60) : undefined;
   };
-  const chatTitle = chatId ? known[chatId]?.title || saved?.title || firstAsk(chatId) || "New chat" : "";
 
   // A chat started here is listed at once, before ucode has saved it.
   const fresh: ChatMeta[] = Object.entries(known)
@@ -407,17 +426,12 @@ export function AppShell() {
   const running = busyChat ?? state.running;
   const project = view.kind === "project" ? state.projects.find((p) => sameFolder(p.path, view.path)) : undefined;
 
-  const place = chatId ? (chatFolder ? folderName(chatFolder) : null) : view.kind === "home" ? folderName(folder) : null;
-  const title =
-    chatId ? chatTitle
-      : view.kind === "chats" ? "Chats"
-        : view.kind === "apps" ? "Apps you built"
-          : view.kind === "project" ? project?.name ?? folderName(view.path)
-            : "New chat";
-
-  const current: ChatMeta | null = chatId
-    ? chats.find((c) => c.id === chatId) ?? { id: chatId, title: chatTitle, folder: chatFolder ?? folder, updatedAt: "", createdAt: "", preview: "", turns: 0 }
-    : null;
+  const panelShown = !!(chatId && panelOpen && chatFolder);
+  const previewToggle = chatId && (
+    <IconButton label={panelOpen ? "Hide preview" : "Show preview"} shortcut="Ctrl+P" active={panelOpen} onClick={() => setPanelOpen((v) => !v)} className="ml-auto">
+      <PanelRight />
+    </IconButton>
+  );
 
   const picker = {
     models: state.models,
@@ -431,42 +445,37 @@ export function AppShell() {
     keys: state.keys,
   };
 
+  // No header: the sidebar and the work area both run to the top. Their top 32px move the window,
+  // and the window buttons float in the top-right corner.
   return (
-    <div className="flex h-dvh flex-col bg-sidebar">
-      <TitleBar
-        place={place}
-        title={title}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        panelOpen={panelOpen}
-        onTogglePanel={chatId ? () => setPanelOpen((v) => !v) : null}
-        chatMenu={current && {
-          onRename: () => setRenaming({ ...current, title: chatTitle }),
-          onDelete: () => setDeleting(current),
-          onOpenFolder: chatFolder ? () => openFolder(chatFolder) : null,
-        }}
-      />
-      <div className="flex min-h-0 flex-1">
-        {sidebarOpen && (
-          <Sidebar
-            view={view}
-            chats={chats}
-            projects={state.projects}
-            running={running}
-            name={name}
-            keys={state.keys}
-            onView={go}
-            onNewProject={() => setProjectDialog(true)}
-            onRemoveProject={removeProject}
-            onRenameChat={setRenaming}
-            onDeleteChat={setDeleting}
-            onOpenFolder={openFolder}
-            onSearch={() => setPalette(true)}
-            onSettings={() => openSettings()}
-          />
-        )}
-        <main className={cn("flex min-w-0 flex-1 overflow-hidden border-t bg-background", sidebarOpen && "rounded-tl-xl border-l")}>
-          <div className="min-w-0 flex-1">
+    <div className="flex h-dvh bg-sidebar text-[13px]">
+      {sidebarOpen && (
+        <Sidebar
+          view={view}
+          chats={chats}
+          projects={state.projects}
+          running={running}
+          onView={go}
+          onNewProject={() => setProjectDialog(true)}
+          onRemoveProject={removeProject}
+          onRenameChat={setRenaming}
+          onDeleteChat={setDeleting}
+          onOpenFolder={openFolder}
+          onSearch={() => setPalette(true)}
+          onSettings={() => openSettings()}
+          onToggleSidebar={() => setSidebarOpen(false)}
+        />
+      )}
+      <main className={cn("flex min-w-0 flex-1 overflow-hidden bg-background", sidebarOpen && "border-l border-sidebar-border")}>
+        {/* The chat and the preview split the area right of the sidebar exactly in half. */}
+        <section className="flex min-w-0 flex-1 basis-0 flex-col">
+          <DragStrip className={cn("px-2", tauri && !panelShown && CLEAR_OF_CONTROLS)}>
+            {!sidebarOpen && (
+              <IconButton label="Show sidebar" shortcut="Ctrl+B" onClick={() => setSidebarOpen(true)}><PanelLeft /></IconButton>
+            )}
+            {!panelShown && previewToggle}
+          </DragStrip>
+          <div className="min-h-0 min-w-0 flex-1">
             {view.kind === "home" && (
               <Home
                 folder={folder}
@@ -481,7 +490,7 @@ export function AppShell() {
             )}
             {chatId && (opening === chatId ? (
               <div className="flex h-full items-center justify-center gap-2 text-[13px] text-muted-foreground">
-                <LoaderCircle className="size-4 animate-spin" /> Opening the chat…
+                <LoaderCircle className="size-3.5 animate-spin" /> Opening the chat…
               </div>
             ) : (
               <Chat
@@ -513,8 +522,11 @@ export function AppShell() {
               />
             )}
           </div>
-          {chatId && panelOpen && chatFolder && (
-            <div className="w-[42%] min-w-[400px] max-w-[680px] border-l">
+        </section>
+        {panelShown && chatId && chatFolder && (
+          <section className="flex min-w-0 flex-1 basis-0 flex-col border-l bg-panel">
+            <DragStrip className={cn("px-2", tauri && CLEAR_OF_CONTROLS)}>{previewToggle}</DragStrip>
+            <div className="min-h-0 flex-1">
               <PreviewPanel
                 key={chatId}
                 chat={chatId}
@@ -526,9 +538,10 @@ export function AppShell() {
                 onSend={(text) => send(text, [], { chat: chatId })}
               />
             </div>
-          )}
-        </main>
-      </div>
+          </section>
+        )}
+      </main>
+      <WindowControls />
 
       <CommandPalette
         open={palette}
@@ -558,6 +571,7 @@ export function AppShell() {
         credit={state.credit}
         onChanged={refresh}
         onLearn={(f) => send("/init", [], { folder: f })}
+        onClearChats={() => setClearing(true)}
       />
       <ProjectDialog
         open={projectDialog}
@@ -577,20 +591,22 @@ export function AppShell() {
         action="Rename"
         onSave={(title) => { if (renaming) renameChat(renaming, title); }}
       />
-      <AlertDialog open={deleting !== null} onOpenChange={(v) => !v && setDeleting(null)}>
-        <AlertDialogContent size="sm" className="w-[300px] gap-0 overflow-hidden rounded-2xl bg-popover p-0 shadow-2xl backdrop-blur-xl data-[size=sm]:max-w-[300px]">
-          <AlertDialogHeader className="place-items-center gap-1 px-5 pb-4 pt-5 text-center">
-            <AlertDialogTitle className="text-[15px] font-semibold">Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[13px] leading-snug text-foreground/80">
-              This can&apos;t be undone. The files ucode made stay in their folder.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="m-0 grid grid-cols-2 gap-0 divide-x border-t bg-transparent p-0">
-            <AlertDialogCancel variant="ghost" className="h-11 rounded-none border-0 text-[15px] font-normal text-primary hover:bg-accent">Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="ghost" className="h-11 rounded-none text-[15px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (deleting) deleteChat(deleting); }}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(v) => !v && setDeleting(null)}
+        title="Delete this chat?"
+        description="This can't be undone. The files ucode made stay in their folder."
+        action="Delete"
+        onConfirm={() => { if (deleting) deleteChat(deleting); }}
+      />
+      <ConfirmDialog
+        open={clearing}
+        onOpenChange={setClearing}
+        title="Delete every chat?"
+        description="This can't be undone. Your projects and the files ucode made stay."
+        action="Delete all"
+        onConfirm={clearChats}
+      />
       <Dialog open={shown !== null} onOpenChange={(v) => !v && setShown(null)}>
         <DialogContent className="flex h-[85vh] max-w-[1100px] flex-col gap-3 p-3 sm:max-w-[1100px]">
           <div className="flex items-center gap-2 pr-9">

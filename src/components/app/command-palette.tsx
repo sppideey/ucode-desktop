@@ -8,12 +8,12 @@ import {
 import { cn } from "@/lib/utils";
 import { type ChatMeta, type Project, type View, folderName } from "./data";
 
-// Roomy rows, small grey section labels and a soft highlight, like Spotlight.
+// Compact rows, small grey section labels and a soft highlight, like Spotlight.
 const ROWS = cn(
-  "rounded-2xl! bg-transparent p-1.5",
-  "[&_[data-slot=command-input-wrapper]]:p-0.5 [&_[data-slot=input-group]]:h-10! [&_[data-slot=input-group]]:rounded-[10px]! [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:bg-accent! [&_[cmdk-input]]:text-[14px]",
-  "[&_[data-slot=command-item]]:rounded-[8px]! [&_[data-slot=command-item]]:py-2 [&_[data-slot=command-item]]:text-[13px]",
-  "[&_[cmdk-group-heading]]:text-[11px]! [&_[cmdk-group-heading]]:font-semibold! [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide",
+  "rounded-xl! bg-transparent p-1",
+  "[&_[data-slot=command-input-wrapper]]:p-0.5 [&_[data-slot=input-group]]:h-8! [&_[data-slot=input-group]]:rounded-lg! [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:bg-accent! [&_[cmdk-input]]:text-[13px]",
+  "[&_[data-slot=command-item]]:rounded-md! [&_[data-slot=command-item]]:py-1.5 [&_[data-slot=command-item]]:text-[12.5px] [&_[data-slot=command-item]_svg]:size-3.5!",
+  "[&_[cmdk-group-heading]]:text-[11px]! [&_[cmdk-group-heading]]:font-medium!",
   "[&_[data-slot=command-separator]]:mx-2 [&_[data-slot=command-separator]]:my-1",
 );
 
@@ -40,18 +40,19 @@ export function CommandPalette({ open, onOpenChange, chats, projects, onView, on
       onOpenChange={onOpenChange}
       title="Search"
       description="Search chats, projects and actions"
-      className="rounded-2xl! bg-popover/85 shadow-2xl backdrop-blur-2xl sm:max-w-[580px]"
+      className="rounded-xl! bg-popover/85 shadow-2xl backdrop-blur-2xl sm:max-w-[540px]"
     >
       {/* cmdk needs its own root inside the dialog, or it has nothing to search in. */}
       <Command className={ROWS}>
         <CommandInput placeholder="Search chats, projects and actions" />
-        <CommandList className="max-h-[360px] pb-1">
+        <CommandList className="max-h-[340px] pb-1">
           <CommandEmpty>Nothing found.</CommandEmpty>
           <CommandGroup heading="Actions">
             <CommandItem onSelect={run(() => onView({ kind: "home" }))}><Plus /> New chat <CommandShortcut>Ctrl N</CommandShortcut></CommandItem>
             <CommandItem onSelect={run(onNewProject)}><FolderPlus /> Open a folder or start a project</CommandItem>
             <CommandItem onSelect={run(() => onSettings("models"))}><Sparkles /> Switch model</CommandItem>
             <CommandItem onSelect={run(() => onSettings("keys"))}><KeyRound /> Keys</CommandItem>
+            <CommandItem onSelect={run(() => onView({ kind: "chats" }))}><MessageSquare /> All chats</CommandItem>
             <CommandItem onSelect={run(() => onView({ kind: "apps" }))}><LayoutGrid /> Apps you built</CommandItem>
             <CommandItem onSelect={run(() => setTheme(resolvedTheme === "light" ? "dark" : "light"))}><Moon /> Switch light and dark</CommandItem>
             <CommandItem onSelect={run(() => onSettings("doctor"))}><Stethoscope /> Check that everything works</CommandItem>

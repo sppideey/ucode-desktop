@@ -63,10 +63,26 @@ impl Server {
     }
 }
 
+/// A newer release on GitHub is downloaded and installed as soon as the app opens, and the app
+/// starts again on it. No answer, or no network: this run simply carries on as it is.
+fn update_now(handle: AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    tauri::async_runtime::spawn(async move {
+        let Ok(updater) = handle.updater() else { return };
+        let Ok(Some(update)) = updater.check().await else { return };
+        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+            handle.state::<Server>().stop(true);
+            handle.restart();
+        }
+    });
+}
+
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Server::default())
         .setup(|app| {
+            update_now(app.handle().clone());
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("ucode")
                 .inner_size(1280.0, 820.0)
@@ -220,9 +236,12 @@ fn is_server(url: &Url) -> bool {
     port != 0 && url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(port)
 }
 
-/// Pages the window may show: the loading page, and the server's own pages.
+/// Pages the window may show: the loading page, the server's own pages, and - inside the
+/// preview panel - the app being built, served from this computer (127.0.0.1 or localhost,
+/// any port). The preview frame is sandboxed, so it cannot move the window anywhere.
 fn allowed(url: &Url) -> bool {
-    url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost") || is_server(url)
+    let loopback = url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+    url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost") || is_server(url) || loopback
 }
 
 /// The server's page may use the microphone (voice input) without asking.

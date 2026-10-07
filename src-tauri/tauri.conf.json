@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ucode",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "dev.ucode.desktop",
   "build": {
     "frontendDist": "loading"
@@ -21,7 +21,9 @@
       "../engine/": "engine/",
       "../package.json": "package.json"
     },
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "om dixit",
     "copyright": "AGPL-3.0",
     "license": "AGPL-3.0-only",
@@ -38,6 +40,18 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5NzA5MTNBRDA0NEIyN0MKUldSOHNrVFFPcEZ3U1ozWDhRUExRbEdpK3labUNPUDFySTE5a2xSRlZOSlhlZ1pEQlNtbUJoUEkK",
+      "endpoints": [
+        "https://github.com/sppideey/ucode-desktop/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

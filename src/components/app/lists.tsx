@@ -12,10 +12,10 @@ const openTarget = (target: string) => post("open", { target }).catch((e) => toa
 /** A page in the iOS way: grouped grey background, a large title, inset lists. */
 function Page({ title, wide, children, accessory }: { title: React.ReactNode; wide?: boolean; children: React.ReactNode; accessory?: React.ReactNode }) {
   return (
-    <div className="h-full overflow-y-auto bg-panel">
-      <div className={wide ? "mx-auto max-w-[860px] px-6 pb-12 pt-8" : "mx-auto max-w-[720px] px-6 pb-12 pt-8"}>
+    <div className="h-full overflow-y-auto [scrollbar-width:thin]">
+      <div className={wide ? "mx-auto max-w-[820px] px-6 pb-10 pt-4" : "mx-auto max-w-[680px] px-6 pb-10 pt-4"}>
         <div className="flex items-center gap-3">
-          <h1 className="min-w-0 truncate text-[28px] font-bold tracking-tight">{title}</h1>
+          <h1 className="min-w-0 truncate text-[18px] font-semibold">{title}</h1>
           <div className="ml-auto shrink-0">{accessory}</div>
         </div>
         {children}
@@ -25,23 +25,23 @@ function Page({ title, wide, children, accessory }: { title: React.ReactNode; wi
 }
 
 const Group = ({ children, label }: { children: React.ReactNode; label?: string }) => (
-  <section className="mt-6">
-    {label && <h2 className="px-4 pb-1.5 text-[12px] font-normal uppercase tracking-wide text-muted-foreground">{label}</h2>}
-    <div className="divide-y divide-border overflow-hidden rounded-xl bg-card">{children}</div>
+  <section className="mt-5">
+    {label && <h2 className="px-3 pb-1 text-[11px] font-medium text-muted-foreground">{label}</h2>}
+    <div className="divide-y divide-border overflow-hidden rounded-xl border bg-card">{children}</div>
   </section>
 );
 
 const TextButton = ({ children, onClick }: { children: React.ReactNode; onClick: () => void }) => (
-  <button onClick={onClick} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[15px] text-primary transition-opacity hover:opacity-70">{children}</button>
+  <button onClick={onClick} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[13px] text-primary [&_svg]:size-3.5 transition-opacity hover:opacity-70">{children}</button>
 );
 
 function Empty({ icon: Icon, title, text, action, onAction }: { icon: typeof MessageSquare; title: string; text: string; action: string; onAction: () => void }) {
   return (
-    <div className="flex flex-col items-center py-24 text-center">
-      <Icon className="size-10 text-muted-foreground/60" strokeWidth={1.5} />
-      <h3 className="mt-4 text-[17px] font-semibold">{title}</h3>
-      <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">{text}</p>
-      <button className="mt-4 text-[15px] text-primary hover:opacity-70" onClick={onAction}>{action}</button>
+    <div className="flex flex-col items-center py-20 text-center">
+      <Icon className="size-8 text-muted-foreground/60" strokeWidth={1.5} />
+      <h3 className="mt-3 text-[14px] font-semibold">{title}</h3>
+      <p className="mt-1 max-w-sm text-[12.5px] text-muted-foreground">{text}</p>
+      <button type="button" className="mt-3 text-[13px] text-primary hover:opacity-70" onClick={onAction}>{action}</button>
     </div>
   );
 }
@@ -50,13 +50,13 @@ function ChatList({ chats, onView }: { chats: ChatMeta[]; onView: (v: View) => v
   return (
     <>
       {chats.map((c) => (
-        <button key={c.id} onClick={() => onView({ kind: "chat", id: c.id })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent/60 active:bg-accent">
+        <button type="button" key={c.id} onClick={() => onView({ kind: "chat", id: c.id })} className="flex w-full items-center gap-3 px-3 py-1.5 text-left transition-colors hover:bg-accent/60 active:bg-accent">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px]">{c.title}</p>
-            <p className="truncate text-[12px] text-muted-foreground">{folderName(c.folder)} · {c.turns} message{c.turns === 1 ? "" : "s"}</p>
+            <p className="truncate text-[13px]">{c.title}</p>
+            <p className="truncate text-[11.5px] text-muted-foreground">{folderName(c.folder)} · {c.turns} message{c.turns === 1 ? "" : "s"}</p>
           </div>
-          <span className="shrink-0 text-[13px] text-muted-foreground">{dayOf(c.updatedAt)}</span>
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
+          <span className="shrink-0 text-[11.5px] text-muted-foreground">{dayOf(c.updatedAt)}</span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" />
         </button>
       ))}
     </>
@@ -68,20 +68,20 @@ export function ChatsPage({ chats, onView }: { chats: ChatMeta[]; onView: (v: Vi
   const [q, setQ] = useState("");
   const shown = chats.filter((c) => `${c.title} ${c.preview} ${c.folder}`.toLowerCase().includes(q.toLowerCase()));
   return (
-    <Page title="Chats" accessory={<TextButton onClick={() => onView({ kind: "home" })}><Plus className="size-4" /> New chat</TextButton>}>
+    <Page title="Chats" accessory={<TextButton onClick={() => onView({ kind: "home" })}><Plus /> New chat</TextButton>}>
       {chats.length === 0 ? (
         <Empty icon={MessageSquare} title="No chats yet" text="Everything you ask ucode is kept here, so you can pick up any conversation later." action="Start a chat" onAction={() => onView({ kind: "home" })} />
       ) : (
         <>
-          <div className="relative mt-4">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="relative mt-3">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search"
               aria-label="Search your chats"
               autoFocus
-              className="h-9 w-full rounded-[10px] bg-accent pl-8 pr-3 text-[15px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/30"
+              className="h-8 w-full rounded-lg bg-accent pl-8 pr-3 text-[13px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/30"
             />
           </div>
           {shown.length === 0 ? (
@@ -101,7 +101,7 @@ type App = { name: string; path: string; folder: string; at: number; page: boole
 export function AppsPage({ onView, onPreview, onShare }: { onView: (v: View) => void; onPreview: (path: string) => void; onShare: (app: App) => void }) {
   const [apps, setApps] = useState<App[] | null>(null);
   useEffect(() => { get("apps").then((r) => setApps(r.apps)).catch(() => setApps([])); }, []);
-  const pill = "h-7 rounded-full bg-accent px-3.5 text-[13px] font-semibold text-primary transition-colors hover:bg-primary/15";
+  const pill = "h-6 rounded-full bg-accent px-3 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/15";
   return (
     <Page title="Apps you built" wide>
       {apps && apps.length === 0 && (
@@ -110,20 +110,20 @@ export function AppsPage({ onView, onPreview, onShare }: { onView: (v: View) => 
       {apps && apps.length > 0 && (
         <Group>
           {apps.map((a) => (
-            <div key={a.path} className="flex items-center gap-3 px-4 py-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-[10px] text-white" style={{ background: `oklch(0.65 0.14 ${hueOf(a.path)})` }}>
-                {a.page ? <AppWindow className="size-5" /> : <Package className="size-5" />}
+            <div key={a.path} className="flex items-center gap-3 px-3 py-2">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg text-white" style={{ background: `oklch(0.65 0.14 ${hueOf(a.path)})` }}>
+                {a.page ? <AppWindow className="size-4" /> : <Package className="size-4" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-medium">{a.name}</p>
-                <p className="truncate text-[12px] text-muted-foreground">{dayOf(a.at)} · {folderName(a.folder)}</p>
+                <p className="truncate text-[13px] font-medium">{a.name}</p>
+                <p className="truncate text-[11.5px] text-muted-foreground">{dayOf(a.at)} · {folderName(a.folder)}</p>
               </div>
               {a.page && <button className={pill} onClick={() => onPreview(a.path)}>Open</button>}
               <button className={pill} onClick={() => onShare(a)}>Share</button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-primary transition-colors hover:bg-primary/15" aria-label={`More for ${a.name}`}>
-                    <Ellipsis className="size-4" />
+                  <button type="button" className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary transition-colors hover:bg-primary/15" aria-label={`More for ${a.name}`}>
+                    <Ellipsis className="size-3.5" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52 rounded-xl p-1 backdrop-blur-xl">
@@ -142,19 +142,19 @@ export function AppsPage({ onView, onPreview, onShare }: { onView: (v: View) => 
 
 /** One project: its folder, its chats, and a new one inside it. */
 export function ProjectPage({ project, chats, onView, onNotes }: { project: Project; chats: ChatMeta[]; onView: (v: View) => void; onNotes: () => void }) {
-  const row = "flex w-full items-center gap-3 px-4 py-2.5 text-left text-[15px] transition-colors hover:bg-accent/60 active:bg-accent";
+  const row = "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-accent/60 active:bg-accent";
   return (
-    <Page title={<span className="flex items-center gap-3"><span className="size-6 shrink-0 rounded-[7px]" style={{ background: `oklch(0.7 0.14 ${hueOf(project.path)})` }} />{project.name}</span>}>
-      <p className="mt-1 truncate font-mono text-[12px] text-muted-foreground" title={project.path}>{project.path}</p>
+    <Page title={<span className="flex items-center gap-2"><span className="size-4 shrink-0 rounded-[5px]" style={{ background: `oklch(0.7 0.14 ${hueOf(project.path)})` }} />{project.name}</span>}>
+      <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground" title={project.path}>{project.path}</p>
       <Group>
         <button className={`${row} text-primary`} onClick={() => onView({ kind: "home", folder: project.path })}>
-          <Plus className="size-[18px]" /> New chat in this project
+          <Plus className="size-3.5" /> New chat in this project
         </button>
         <button className={row} onClick={() => openTarget(project.path)}>
-          <FolderOpen className="size-[18px] text-muted-foreground" /> <span className="flex-1">Open folder</span> <ChevronRight className="size-4 text-muted-foreground/60" />
+          <FolderOpen className="size-3.5 text-muted-foreground" /> <span className="flex-1">Open folder</span> <ChevronRight className="size-3.5 text-muted-foreground/60" />
         </button>
         <button className={row} onClick={onNotes}>
-          <BookOpen className="size-[18px] text-muted-foreground" /> <span className="flex-1">Project notes</span> <ChevronRight className="size-4 text-muted-foreground/60" />
+          <BookOpen className="size-3.5 text-muted-foreground" /> <span className="flex-1">Project notes</span> <ChevronRight className="size-3.5 text-muted-foreground/60" />
         </button>
       </Group>
       {chats.length === 0 ? (

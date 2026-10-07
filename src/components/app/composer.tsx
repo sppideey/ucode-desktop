@@ -54,8 +54,8 @@ type Props = {
 
 type Attached = { name: string; path: string };
 
-/** A plain muted icon button, iOS toolbar style. */
-const plain = "grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+/** A plain muted 28px icon button. */
+const plain = "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
 /** Where you type: the message, files or the mic, build or plan, and which model. */
 export function Composer({ placeholder = "Ask ucode to build or change something…", onSend, models, model, onModel, mode, onMode, onKeys, provider, onProvider, keys, big, busy, onStop, autoFocus }: Props) {
@@ -140,7 +140,7 @@ export function Composer({ placeholder = "Ask ucode to build or change something
           ref={list}
           role="listbox"
           aria-label="Commands"
-          className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-72 overflow-y-auto overscroll-contain rounded-xl bg-popover p-1 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.3)] ring-1 ring-border backdrop-blur-xl"
+          className="absolute bottom-full left-0 right-0 z-20 mb-1.5 max-h-64 overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 shadow-[0_12px_32px_-8px_rgb(0_0_0/0.28)] ring-1 ring-border backdrop-blur-xl"
         >
           {slash.map((c, i) => (
             <button
@@ -150,36 +150,34 @@ export function Composer({ placeholder = "Ask ucode to build or change something
               onMouseEnter={() => setPick(i)}
               onClick={() => { setText(c.arg ? `${c.name} ` : c.name); box.current?.focus(); }}
               className={cn(
-                "relative flex w-full items-baseline gap-2 rounded-lg px-3 py-2 text-left",
-                i > 0 && "before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-border",
-                i === pick && "bg-accent before:opacity-0",
-                i === pick + 1 && "before:opacity-0",
+                "flex w-full items-baseline gap-2 rounded-md px-2.5 py-1.5 text-left",
+                i === pick && "bg-accent",
               )}
             >
-              <span className="text-[13.5px] font-medium">{c.name}</span>
-              {c.arg && <span className="font-mono text-[11.5px] text-muted-foreground">{c.arg}</span>}
-              <span className="ml-auto truncate pl-3 text-[12px] text-muted-foreground">{c.what}</span>
+              <span className="font-mono text-[12px] font-medium">{c.name}</span>
+              {c.arg && <span className="font-mono text-[11px] text-muted-foreground">{c.arg}</span>}
+              <span className="ml-auto truncate pl-3 text-[11.5px] text-muted-foreground">{c.what}</span>
             </button>
           ))}
         </div>
       )}
       <div
-        className="rounded-[22px] border bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.22)] transition-[border-color,box-shadow] focus-within:border-primary/45 focus-within:shadow-[0_0_0_3.5px_color-mix(in_oklch,var(--primary)_14%,transparent),0_8px_24px_-14px_rgb(0_0_0/0.22)]"
+        className="rounded-xl border bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_6px_18px_-12px_rgb(0_0_0/0.2)] transition-[border-color,box-shadow] focus-within:border-primary/45 focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_12%,transparent),0_6px_18px_-12px_rgb(0_0_0/0.2)]"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
       >
         {(files.length > 0 || adding > 0) && (
-          <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+          <div className="flex flex-wrap gap-1 px-2 pt-2">
             {files.map((f) => (
-              <span key={f.path} className="flex max-w-full items-center gap-1.5 rounded-full bg-accent py-1 pl-2.5 pr-1 text-[12px]">
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              <span key={f.path} className="flex h-6 max-w-full items-center gap-1.5 rounded-md bg-accent pl-2 pr-1 font-mono text-[11.5px]">
+                <FileText className="size-3 shrink-0 text-muted-foreground" />
                 <span className="truncate">{f.name}</span>
                 <button onClick={() => setFiles((all) => all.filter((x) => x.path !== f.path))} className="grid size-4 shrink-0 place-items-center rounded-full bg-muted-foreground/25 text-background transition-colors hover:bg-muted-foreground/45" aria-label={`Remove ${f.name}`}>
                   <X className="size-2.5" strokeWidth={3} />
                 </button>
               </span>
             ))}
-            {adding > 0 && <span className="flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[12px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" /> Adding…</span>}
+            {adding > 0 && <span className="flex h-6 items-center gap-1.5 rounded-md bg-accent px-2 text-[11.5px] text-muted-foreground"><LoaderCircle className="size-3 animate-spin" /> Adding…</span>}
           </div>
         )}
         <textarea
@@ -212,16 +210,16 @@ export function Composer({ placeholder = "Ask ucode to build or change something
           rows={big ? 3 : 1}
           placeholder={mic === "on" ? "Listening… speak, then press the mic again (or Enter to send)" : mic === "writing" ? "Writing down what you said…" : placeholder}
           className={cn(
-            "block max-h-[40vh] w-full resize-none bg-transparent px-4 pt-3 text-[15px] leading-normal outline-none [field-sizing:content] placeholder:text-muted-foreground/80",
-            big ? "min-h-[88px]" : "min-h-[48px]",
+            "block max-h-[40vh] w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-[13.5px] leading-[1.5] outline-none [field-sizing:content] placeholder:text-muted-foreground/70",
+            big ? "min-h-[64px]" : "min-h-[44px]",
           )}
         />
         <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        <div className="flex items-center gap-0.5 px-2 pb-2">
+        <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <button type="button" className={plain} aria-label="Add a picture or file" onClick={() => picker.current?.click()}>
-                <Plus className="size-[18px]" />
+                <Plus className="size-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent>Add a picture or file · Ctrl+O</TooltipContent>
@@ -234,7 +232,7 @@ export function Composer({ placeholder = "Ask ucode to build or change something
                 className={cn(plain, mic === "on" && "bg-destructive/12 text-destructive hover:bg-destructive/18 hover:text-destructive")}
                 aria-label="Speak instead of typing"
               >
-                {mic === "writing" ? <LoaderCircle className="size-[17px] animate-spin" /> : <Mic className={cn("size-[17px]", mic === "on" && "animate-pulse")} />}
+                {mic === "writing" ? <LoaderCircle className="size-[15px] animate-spin" /> : <Mic className={cn("size-[15px]", mic === "on" && "animate-pulse")} />}
               </button>
             </TooltipTrigger>
             <TooltipContent>{mic === "on" ? "Stop and write it down" : "Speak instead of typing · Ctrl+T"}</TooltipContent>
@@ -242,7 +240,7 @@ export function Composer({ placeholder = "Ask ucode to build or change something
 
           <Segmented
             label="Build or plan"
-            className="ml-1.5"
+            className="ml-1"
             value={mode}
             onChange={(v) => {
               onMode(v);
@@ -255,19 +253,19 @@ export function Composer({ placeholder = "Ask ucode to build or change something
             ]}
           />
 
-          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          <div className="ml-auto flex min-w-0 items-center gap-1">
             <ModelPicker models={models} value={model} onChange={onModel} onKeys={onKeys} provider={provider} onProvider={onProvider} keys={keys} />
             <button
               type="button"
               onClick={() => (mic === "on" ? toggleMic(true) : runLocal(text.trim()) || send())}
               disabled={(!text.trim() && !busy && mic !== "on") || adding > 0}
               className={cn(
-                "grid size-8 shrink-0 place-items-center rounded-full transition-all active:scale-95 disabled:pointer-events-none",
+                "grid size-7 shrink-0 place-items-center rounded-lg transition-all active:scale-95 disabled:pointer-events-none",
                 busy ? "bg-foreground text-background hover:opacity-85" : "bg-primary text-primary-foreground hover:brightness-110 disabled:bg-accent disabled:text-muted-foreground/70",
               )}
               aria-label={busy ? "Stop" : "Send"}
             >
-              {busy ? <span className="size-2.5 rounded-[2.5px] bg-current" /> : <ArrowUp className="size-[18px]" strokeWidth={2.6} />}
+              {busy ? <span className="size-2 rounded-[2px] bg-current" /> : <ArrowUp className="size-4" strokeWidth={2.5} />}
             </button>
           </div>
         </div>

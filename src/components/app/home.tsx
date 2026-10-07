@@ -43,8 +43,8 @@ export function Home({ folder, defaultFolder, projects, onFolder, onOpenFolder, 
     <div className="flex h-full flex-col items-center justify-center overflow-y-auto px-6 pb-[10vh] pt-8">
       <div className="w-full max-w-[680px]">
         <div className="mb-7 flex flex-col items-center text-center">
-          <Logo className="size-12 drop-shadow-[0_6px_14px_rgb(0_122_255/0.28)]" />
-          <h1 className="mt-4 text-[34px] font-bold leading-[1.1] tracking-tight text-foreground">
+          <Logo className="size-9 drop-shadow-[0_4px_10px_rgb(0_122_255/0.25)]" />
+          <h1 className="mt-3 text-[22px] font-semibold leading-tight tracking-tight text-foreground">
             {hello}{name && `, ${name}`}
           </h1>
         </div>

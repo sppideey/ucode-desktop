@@ -24,7 +24,7 @@ export type State = {
 export type Item =
   | { kind: "user"; id: string; text: string; files?: string[] }
   | { kind: "reply"; id: string; text: string; streaming?: boolean }
-  | { kind: "steps"; id: string; steps: Step[]; count?: number; open?: boolean }
+  | { kind: "steps"; id: string; steps: Step[]; count?: number; open?: boolean; start?: number; end?: number }
   | { kind: "question"; id: string; qid: string; ask: "confirm" | "pick"; action?: string; detail?: string; risk?: string | null; always?: string | null; title?: string | null; items?: string[]; answered?: boolean }
   | { kind: "note"; id: string; text: string }
   | { kind: "lines"; id: string; title?: string; lines: string[] }

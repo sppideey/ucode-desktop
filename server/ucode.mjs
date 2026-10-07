@@ -27,13 +27,14 @@ const [loop, provider, history, attach, opener, voice, context, version, theme, 
 ]);
 
 export const { load: loadSession, save: saveSession, remove: removeSession } = history;
+export const clearSessions = async () => { await history.removeAll(); listed = null; };
 export const { projectFiles } = attach;
 export const { insideRoot, openInBrowser } = opener;
 export const { isSilent, cleanTranscript } = voice;
 export const { MEMORY_FILE } = context;
 export const UCODE_VERSION = version.VERSION;
-export const { CREDIT, bare, asLabel, asNarrationLine, tidyReply } = theme;
-export const { stopServers } = shell;
+export const { CREDIT, bare, asLabel, asNarrationLine, tidyReply, trimAnswer } = theme;
+export const { stopServers, serversReadySince } = shell;
 export const { closeBrowser } = browser;
 export const { model, resetConnection, providerKey, DEFAULT_MODEL, BASE_URL, ENV_FILE } = provider;
 
@@ -212,6 +213,14 @@ export class Agent extends loop.Agent {
 
   openInBrowser(target) {
     return this.ui.showPreview(target);
+  }
+
+  /** A server that came up during the turn goes to the preview panel - without ucode's "opened in your browser". */
+  openWhenReady(since) {
+    const server = shell.serversReadySince(since).at(-1);
+    if (!server || (this.opened ??= new Set()).has(server.url)) return;
+    this.opened.add(server.url);
+    this.openInBrowser(server.url);
   }
 
   async activate() {

@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { bare, asLabel, asNarrationLine, tidyReply } from './ucode.mjs';
+import { bare, asLabel, asNarrationLine, tidyReply, trimAnswer } from './ucode.mjs';
 
 const plain = (s) => bare(String(s ?? '')).replace(/\r/g, '');
 
@@ -61,14 +61,14 @@ export class WebUI {
   progress(lines) { const last = plain(lines.at(-1)).trim(); if (last) this.updateSpinner(last); }
   userMessage() {}
 
-  assistant(text, { replay = false } = {}) {
-    const body = replay ? String(text) : tidyReply(String(text));
+  assistant(text, { replay = false, closing = false } = {}) {
+    const body = replay ? String(text) : closing ? trimAnswer(tidyReply(String(text))) : tidyReply(String(text));
     if (body.trim()) this.emit({ type: 'reply', text: body });
   }
 
   streamBegin() { this.streamBuf = ''; this.emit({ type: 'streamBegin' }); }
   streamDelta(delta) { this.streamBuf += delta; this.emit({ type: 'delta', text: delta }); }
-  streamEnd({ asNarration = false } = {}) {
+  streamEnd({ asNarration = false, closing = false } = {}) {
     const text = this.streamBuf;
     this.streamBuf = '';
     // Said beside a tool call it is commentary: one line in the steps, not an answer.
@@ -76,7 +76,7 @@ export class WebUI {
       this.emit({ type: 'streamDrop' });
       const line = asNarrationLine(text);
       if (line) this.narrate(line);
-    } else this.emit({ type: 'streamEnd', text: tidyReply(text) });
+    } else this.emit({ type: 'streamEnd', text: closing ? trimAnswer(tidyReply(text)) : tidyReply(text) });
     return text;
   }
   thinkingDelta() {}

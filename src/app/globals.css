@@ -132,7 +132,11 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-sidebar text-foreground;
+    @apply bg-sidebar text-[13px] leading-normal text-foreground;
+  }
+  /* Slim scrollbars, the way an editor's are. */
+  * {
+    scrollbar-width: thin;
   }
   html {
     @apply font-sans;

@@ -2,33 +2,38 @@
 
 import { useEffect, useState } from "react";
 import {
-  BookOpen, Check, GitBranch, KeyRound, LoaderCircle, Monitor, Moon, Package, Palette, Plug, ShieldCheck, Sparkles, Star, Stethoscope, Sun, User, Wand2, X,
+  BookOpen, Check, ChevronRight, GitBranch, HardDrive, KeyRound, LoaderCircle, Package, Palette, Plug, ShieldCheck, Sparkles, Star, Stethoscope, Wand2, X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { get, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { type Keys, type Model, type Project, type Provider, folderName, providerName } from "./data";
 import { Logo } from "./logo";
 
+// iOS system colours. Blue is the theme's own, so picking it clears the override.
 const ACCENTS = [
-  { name: "Blue", hue: 259 }, { name: "Violet", hue: 295 }, { name: "Green", hue: 155 },
-  { name: "Orange", hue: 50 }, { name: "Rose", hue: 10 }, { name: "Teal", hue: 195 },
+  { name: "Blue", hex: null, swatch: "#007aff" },
+  { name: "Indigo", hex: "#5856d6", swatch: "#5856d6" },
+  { name: "Purple", hex: "#af52de", swatch: "#af52de" },
+  { name: "Pink", hex: "#ff2d55", swatch: "#ff2d55" },
+  { name: "Orange", hex: "#ff9500", swatch: "#ff9500" },
+  { name: "Green", hex: "#34c759", swatch: "#34c759" },
+  { name: "Teal", hex: "#30b0c7", swatch: "#30b0c7" },
 ];
 
 const SECTIONS = [
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "models", label: "Models", icon: Sparkles },
-  { id: "keys", label: "Keys", icon: KeyRound },
-  { id: "permissions", label: "Permissions", icon: ShieldCheck },
-  { id: "notes", label: "Project notes", icon: BookOpen },
-  { id: "skills", label: "Skills", icon: Wand2 },
-  { id: "addons", label: "Add-ons", icon: Plug },
-  { id: "doctor", label: "Check everything", icon: Stethoscope },
-  { id: "about", label: "About", icon: User },
+  { id: "appearance", label: "Appearance", icon: Palette, tile: "#007aff" },
+  { id: "models", label: "Models", icon: Sparkles, tile: "#af52de" },
+  { id: "keys", label: "Keys", icon: KeyRound, tile: "#8e8e93" },
+  { id: "permissions", label: "Permissions", icon: ShieldCheck, tile: "#34c759" },
+  { id: "notes", label: "Project notes", icon: BookOpen, tile: "#ff9500" },
+  { id: "skills", label: "Skills", icon: Wand2, tile: "#5856d6" },
+  { id: "addons", label: "Add-ons", icon: Plug, tile: "#30b0c7" },
+  { id: "doctor", label: "Check everything", icon: Stethoscope, tile: "#ff2d55" },
+  { id: "data", label: "Data", icon: HardDrive, tile: "#636366" },
+  { id: "about", label: "About", icon: null, tile: "" },
 ] as const;
 type Section = (typeof SECTIONS)[number]["id"];
 
@@ -38,11 +43,11 @@ const KEYS: KeyInfo[] = [
   { name: "GEMINI_API_KEY", key: "google", title: "Google key", text: "For the Gemini models. Free, no card.", link: "https://aistudio.google.com/apikey", hint: "AIza…" },
   { name: "OPENROUTER_API_KEY", key: "openrouter", title: "OpenRouter key", text: "For the free NVIDIA and Gemma models on OpenRouter.", link: "https://openrouter.ai/keys", hint: "sk-or-…" },
   {
-    name: "VERCEL_TOKEN", key: "vercel", title: "Vercel token — to share your apps online",
+    name: "VERCEL_TOKEN", key: "vercel", title: "Vercel token",
     text: "Lets “Share online” put your apps on the internet and give you a link. Free.",
     link: "https://vercel.com/account/tokens", hint: "Vercel token",
     steps: [
-      "Click “Get one free” below. It opens vercel.com.",
+      "Click “Get one free”. It opens vercel.com.",
       "Sign up free (the quickest is “Continue with GitHub” or Google).",
       "On the Tokens page, click “Create Token”.",
       "Name it ucode, choose No Expiration, and click Create.",
@@ -57,7 +62,7 @@ const PROVIDERS = [
   { id: "openrouter", title: "OpenRouter", text: "Free NVIDIA and Gemma models, with a free OpenRouter key." },
 ] as const;
 
-const openLink = (url: string) => post("open", { target: url });
+const openLink = (url: string) => post("open", { target: url }).catch((e) => toast.error(e.message));
 
 type Props = {
   open: boolean;
@@ -78,7 +83,23 @@ type Props = {
   credit: string;
   onChanged: () => void;
   onLearn: (folder: string) => void;
+  onClearChats: () => void;
 };
+
+/** An iOS grouped list: a small grey label, a rounded card of rows split by hairlines, a footnote. */
+function Group({ label, footer, children }: { label?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="mb-5">
+      {label && <h3 className="px-3 pb-1 text-[11px] font-medium text-muted-foreground">{label}</h3>}
+      <div className="divide-y divide-border overflow-hidden rounded-xl bg-card">{children}</div>
+      {footer && <p className="px-3 pt-1.5 text-[11.5px] leading-snug text-muted-foreground">{footer}</p>}
+    </section>
+  );
+}
+
+const row = "flex min-h-9 w-full items-center gap-3 px-3 py-1.5 text-left text-[13px]";
+const tapRow = cn(row, "transition-colors hover:bg-accent/60 active:bg-accent");
+const smallButton = "h-6 rounded-md px-2 text-[12px] font-medium transition-colors disabled:opacity-40";
 
 /** Output of one of ucode's commands, as a page. */
 function CommandPage({ text, folder, intro }: { text: string; folder: string; intro: string }) {
@@ -90,12 +111,13 @@ function CommandPage({ text, folder, intro }: { text: string; folder: string; in
     post("command", { text, folder }).then(setOut).catch((e) => setError(e.message));
   }, [text, folder]);
   return (
-    <div className="space-y-3">
-      <p className="text-[12px] text-muted-foreground">{intro}</p>
-      {error && <p className="text-[13px] text-destructive">{error}</p>}
-      {!out && !error && <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Asking ucode…</p>}
-      {out && <pre className="whitespace-pre-wrap rounded-xl border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed">{out.lines.join("\n").replace(/^\n+|\n+$/g, "") || "Nothing here yet."}</pre>}
-    </div>
+    <Group footer={intro}>
+      <div className="px-3 py-2.5">
+        {error && <p className="text-[12.5px] text-destructive">{error}</p>}
+        {!out && !error && <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" /> Asking ucode…</p>}
+        {out && <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed">{out.lines.join("\n").replace(/^\n+|\n+$/g, "") || "Nothing here yet."}</pre>}
+      </div>
+    </Group>
   );
 }
 
@@ -116,40 +138,54 @@ function KeyRow({ k, set, onChanged }: { k: KeyInfo; set: boolean; onChanged: ()
     }
   };
   return (
-    <div className="rounded-xl border p-3.5">
-      <div className="flex items-start gap-3">
+    <div className="px-3 py-2.5">
+      <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium">{k.title}</p>
-          <p className="text-[12px] text-muted-foreground">{k.text}</p>
+          <p className="text-[11.5px] text-muted-foreground">{k.text}</p>
         </div>
-        {set ? <span className="flex items-center gap-1 text-[12px] text-success"><Check className="size-3.5" /> Saved</span> : <span className="text-[12px] text-muted-foreground">Not added</span>}
+        {set ? <span className="flex shrink-0 items-center gap-1 text-[11.5px] text-success"><Check className="size-3" /> Saved</span>
+          : <span className="shrink-0 text-[11.5px] text-muted-foreground">Not added</span>}
       </div>
       {k.steps && !set && (
-        <ol className="mt-2.5 list-decimal space-y-1 rounded-lg bg-muted/60 py-2.5 pl-8 pr-3 text-[12.5px] leading-snug">
+        <ol className="mt-2 list-decimal space-y-0.5 rounded-lg bg-muted/70 py-2 pl-7 pr-3 text-[12px] leading-snug">
           {k.steps.map((s) => <li key={s}>{s}</li>)}
         </ol>
       )}
       {editing ? (
-        <div className="mt-3 flex gap-2">
-          <Input autoFocus type="password" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && value.trim() && save(value.trim())} placeholder={`Paste it here — ${k.hint}`} className="font-mono" />
-          <Button disabled={!value.trim() || busy} onClick={() => save(value.trim())}>{busy ? <LoaderCircle className="animate-spin" /> : "Check & save"}</Button>
-          <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+        <div className="mt-2 flex items-center gap-1.5">
+          <input
+            autoFocus
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && value.trim() && save(value.trim())}
+            placeholder={`Paste it here — ${k.hint}`}
+            aria-label={k.title}
+            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[12px] outline-none focus:border-primary"
+          />
+          <button type="button" className={cn(smallButton, "h-7 bg-primary text-primary-foreground hover:opacity-90")} disabled={!value.trim() || busy} onClick={() => save(value.trim())}>
+            {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : "Check & save"}
+          </button>
+          <button type="button" className={cn(smallButton, "h-7 text-muted-foreground hover:bg-accent")} onClick={() => setEditing(false)}>Cancel</button>
         </div>
       ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button size="sm" variant={set ? "outline" : "default"} onClick={() => setEditing(true)}>{set ? "Change" : "Add"}</Button>
-          {set && <Button size="sm" variant="ghost" disabled={busy} onClick={() => save(null)}>Remove</Button>}
-          <Button size="sm" variant="link" className="px-1" onClick={() => openLink(k.link)}>Get one free</Button>
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          <button type="button" className={cn(smallButton, set ? "bg-accent hover:bg-accent/70" : "bg-primary text-primary-foreground hover:opacity-90")} onClick={() => setEditing(true)}>{set ? "Change" : "Add"}</button>
+          {set && <button type="button" className={cn(smallButton, "text-destructive hover:bg-destructive/10")} disabled={busy} onClick={() => save(null)}>Remove</button>}
+          <button type="button" className={cn(smallButton, "text-primary hover:bg-primary/10")} onClick={() => openLink(k.link)}>Get one free</button>
         </div>
       )}
     </div>
   );
 }
 
+const Selected = () => <Check className="size-3.5 shrink-0 text-primary" strokeWidth={2.5} />;
+
 /** Settings, in plain words. Every choice takes effect at once. */
 export function SettingsDialog(p: Props) {
   const [section, setSection] = useState<Section>("appearance");
-  const [accent, setAccent] = useState(259);
+  const [accent, setAccent] = useState<string | null>(null);
   const [notesFolder, setNotesFolder] = useState(p.folder);
   const [notes, setNotes] = useState<string | null>(null);
   const [perm, setPerm] = useState(0);
@@ -160,7 +196,7 @@ export function SettingsDialog(p: Props) {
     if (p.open) setNotesFolder(p.folder);
   }, [p.open, p.section, p.folder]);
   useEffect(() => {
-    try { const h = Number(localStorage.getItem("ucode-accent")); if (h) setAccent(h); } catch { /* private window */ }
+    try { const a = localStorage.getItem("ucode-accent"); if (a && /^#[0-9a-f]{6}$/i.test(a)) setAccent(a.toLowerCase()); } catch { /* private window */ }
   }, []);
   useEffect(() => {
     if (section !== "notes") return;
@@ -168,166 +204,216 @@ export function SettingsDialog(p: Props) {
     get("memory", { folder: notesFolder }).then((r) => setNotes(r.text)).catch(() => setNotes(""));
   }, [section, notesFolder]);
 
-  const pickAccent = (hue: number) => {
-    setAccent(hue);
-    document.documentElement.style.setProperty("--brand", `oklch(0.6 0.19 ${hue})`);
-    try { localStorage.setItem("ucode-accent", String(hue)); } catch { /* private window */ }
+  const pickAccent = (hex: string | null) => {
+    setAccent(hex);
+    const root = document.documentElement.style;
+    try {
+      if (hex) { root.setProperty("--brand", hex); localStorage.setItem("ucode-accent", hex); }
+      else { root.removeProperty("--brand"); localStorage.removeItem("ucode-accent"); }
+    } catch { /* private window */ }
   };
 
+  const setPermissions = (mode: "ask" | "auto", said: string) =>
+    post("command", { text: `/permissions ${mode}`, folder: notesFolder })
+      .then(() => { toast.success(said); setPerm((n) => n + 1); })
+      .catch((e) => toast.error(e.message));
+
   const folders = [{ path: p.defaultFolder, name: "ucode (your apps)" }, ...p.projects.map((x) => ({ path: x.path, name: x.name }))];
-  const FolderChooser = () => (
-    <select value={notesFolder} onChange={(e) => setNotesFolder(e.target.value)} className="h-8 rounded-lg border bg-background px-2 text-[13px]">
-      {folders.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
-      {!folders.some((f) => f.path === notesFolder) && <option value={notesFolder}>{folderName(notesFolder)}</option>}
-    </select>
+  const folderRow = (
+    <div className={row}>
+      <span className="flex-1">Folder</span>
+      <select value={notesFolder} onChange={(e) => setNotesFolder(e.target.value)} aria-label="Folder" className="h-6 max-w-[220px] rounded-md bg-accent px-1.5 text-[12.5px] outline-none">
+        {folders.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
+        {!folders.some((f) => f.path === notesFolder) && <option value={notesFolder}>{folderName(notesFolder)}</option>}
+      </select>
+    </div>
   );
+  const current = SECTIONS.find((s) => s.id === section)!;
 
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
-      <DialogContent className="flex h-[600px] max-w-[860px] gap-0 overflow-hidden p-0 sm:max-w-[860px]" showCloseButton={false}>
-        <nav className="w-52 shrink-0 overflow-y-auto border-r bg-sidebar p-2">
-          <DialogTitle className="px-2 pb-3 pt-2 text-[15px]">Settings</DialogTitle>
+      <DialogContent className="flex h-[min(560px,85vh)] max-w-[760px] gap-0 overflow-hidden p-0 text-[13px] sm:max-w-[760px]" showCloseButton={false}>
+        <nav className="w-48 shrink-0 overflow-y-auto border-r bg-sidebar p-2 [scrollbar-width:thin]">
+          <DialogTitle className="px-1.5 pb-2 pt-1 text-[13px] font-semibold">Settings</DialogTitle>
           <DialogDescription className="sr-only">How ucode looks, which model it uses, your keys and what it may do.</DialogDescription>
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setSection(id)} className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-sidebar-accent", section === id && "bg-sidebar-accent font-medium")}>
-              <Icon className="size-4 opacity-70" /> {label}
+          {SECTIONS.map(({ id, label, icon: Icon, tile }) => (
+            <button
+              type="button"
+              key={id}
+              onClick={() => setSection(id)}
+              className={cn("flex h-7 w-full items-center gap-2 rounded-md px-1.5 text-[12.5px] transition-colors hover:bg-sidebar-accent/70", section === id && "bg-sidebar-accent font-medium hover:bg-sidebar-accent")}
+            >
+              {Icon ? (
+                <span className="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-white" style={{ background: tile }}>
+                  <Icon className="size-3" strokeWidth={2.25} />
+                </span>
+              ) : <Logo className="size-[18px]" />}
+              {label}
             </button>
           ))}
         </nav>
 
-        <div className="relative min-w-0 flex-1 overflow-y-auto p-6">
-          <button onClick={() => p.onOpenChange(false)} className="absolute right-3 top-3 grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent" aria-label="Close"><X className="size-4" /></button>
+        <div className="relative min-w-0 flex-1 overflow-y-auto bg-panel px-6 pb-6 pt-4 [scrollbar-width:thin]">
+          <div className="mb-3 flex h-6 items-center">
+            <h2 className="text-[15px] font-semibold">{current.label}</h2>
+            <button type="button" onClick={() => p.onOpenChange(false)} className="ml-auto grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Close">
+              <X className="size-3.5" />
+            </button>
+          </div>
 
           {section === "appearance" && (
-            <div className="space-y-7">
-              <div>
-                <h3 className="text-[14px] font-medium">Theme</h3>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {[{ id: "light", label: "Light", icon: Sun }, { id: "dark", label: "Dark", icon: Moon }, { id: "system", label: "Same as computer", icon: Monitor }].map(({ id, label, icon: Icon }) => (
-                    <button key={id} onClick={() => setTheme(id)} className={cn("flex flex-col items-center gap-2 rounded-xl border p-3 text-[12px] transition-colors hover:bg-accent", theme === id && "border-primary ring-2 ring-primary/20")}>
-                      <Icon className="size-4" /> {label}
+            <Group>
+              <div className={row}>
+                <span className="flex-1">Theme</span>
+                <div role="radiogroup" aria-label="Theme" className="inline-flex rounded-lg bg-accent p-0.5">
+                  {[{ id: "light", label: "Light" }, { id: "dark", label: "Dark" }, { id: "system", label: "Auto" }].map((t) => (
+                    <button
+                      type="button"
+                      key={t.id}
+                      role="radio"
+                      aria-checked={theme === t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={cn("h-6 rounded-md px-2.5 text-[12px] text-muted-foreground transition-colors", theme === t.id && "bg-card font-medium text-foreground shadow-sm dark:bg-white/15")}
+                    >
+                      {t.label}
                     </button>
                   ))}
                 </div>
               </div>
-              <div>
-                <h3 className="text-[14px] font-medium">Accent colour</h3>
-                <div className="mt-3 flex gap-2.5">
+              <div className={row}>
+                <span className="flex-1">Accent colour</span>
+                <div className="flex gap-1.5">
                   {ACCENTS.map((a) => (
-                    <button key={a.name} onClick={() => pickAccent(a.hue)} aria-label={a.name} className="grid size-8 place-items-center rounded-full transition-transform hover:scale-110"
-                      style={{ background: `oklch(0.6 0.19 ${a.hue})`, boxShadow: accent === a.hue ? `0 0 0 2px var(--background), 0 0 0 4px oklch(0.6 0.19 ${a.hue})` : undefined }}>
-                      {accent === a.hue && <Check className="size-4 text-white" />}
+                    <button
+                      type="button"
+                      key={a.name}
+                      onClick={() => pickAccent(a.hex)}
+                      aria-label={a.name}
+                      title={a.name}
+                      className="grid size-[18px] place-items-center rounded-full transition-transform hover:scale-110"
+                      style={{ background: a.swatch, boxShadow: accent === a.hex ? `0 0 0 2px var(--card), 0 0 0 3.5px ${a.swatch}` : undefined }}
+                    >
+                      {accent === a.hex && <Check className="size-2.5 text-white" strokeWidth={3} />}
                     </button>
                   ))}
                 </div>
               </div>
-              <div>
-                <h3 className="text-[14px] font-medium">What should ucode call you?</h3>
-                <Input className="mt-3 max-w-xs" value={p.name} onChange={(e) => p.onName(e.target.value.slice(0, 30))} placeholder="Your first name" />
-              </div>
-            </div>
+              <label className={row}>
+                <span className="flex-1">Your name</span>
+                <input
+                  value={p.name}
+                  onChange={(e) => p.onName(e.target.value.slice(0, 30))}
+                  placeholder="What ucode calls you"
+                  className="h-6 w-44 bg-transparent text-right text-[13px] outline-none placeholder:text-muted-foreground/70"
+                />
+              </label>
+            </Group>
           )}
 
           {section === "models" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-[14px] font-medium">Who runs the model</h3>
-                <p className="text-[12px] text-muted-foreground">Both are free. Each needs its own key — add them under Keys.</p>
-              </div>
-              <div role="radiogroup" aria-label="Who runs the model" className="grid grid-cols-2 gap-2">
+            <>
+              <Group label="Who runs the model" footer="Both are free. Each needs its own key, added under Keys.">
                 {PROVIDERS.map((x) => (
-                  <button key={x.id} role="radio" aria-checked={p.provider === x.id} onClick={() => p.provider !== x.id && p.onProvider(x.id)}
-                    className={cn("rounded-xl border p-3 text-left transition-colors hover:bg-accent", p.provider === x.id && "border-primary ring-2 ring-primary/20")}>
-                    <span className="flex items-center gap-2 text-[13px] font-medium">
-                      {x.title}
-                      {p.keys[x.id] ? <span className="ml-auto flex items-center gap-1 text-[11px] font-normal text-success"><Check className="size-3" /> key saved</span>
-                        : <span className="ml-auto text-[11px] font-normal text-warning">needs a key</span>}
+                  <button type="button" key={x.id} role="radio" aria-checked={p.provider === x.id} onClick={() => p.provider !== x.id && p.onProvider(x.id)} className={tapRow}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block">{x.title}</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{x.text}</span>
                     </span>
-                    <span className="mt-1 block text-[12px] text-muted-foreground">{x.text}</span>
+                    {!p.keys[x.id] && <span className="shrink-0 text-[11.5px] text-warning">needs a key</span>}
+                    {p.provider === x.id && <Selected />}
                   </button>
                 ))}
-              </div>
+              </Group>
               {!p.keys[p.provider] && (
-                <button onClick={() => setSection("keys")} className="w-full rounded-xl border border-warning/50 bg-warning/5 p-3 text-left text-[13px]">
-                  <span className="font-medium">Add your {providerName[p.provider]} key</span> <span className="text-muted-foreground">— free, and these models need it.</span>
-                </button>
+                <Group>
+                  <button type="button" onClick={() => setSection("keys")} className={cn(tapRow, "text-primary")}>
+                    <span className="flex-1">Add your {providerName[p.provider]} key</span>
+                    <ChevronRight className="size-3.5 text-muted-foreground" />
+                  </button>
+                </Group>
               )}
-              {[p.provider].map((via) => (
-                <div key={via} className="space-y-1">
-                  <p className="px-1 text-[11px] font-medium text-muted-foreground">{providerName[via]} models</p>
-                  {p.models.filter((m) => m.via === via).map((m) => (
-                    <button key={m.id} onClick={() => (m.ready ? p.onModel(m.id) : setSection("keys"))}
-                      className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent", p.model === m.id ? "border-primary/50 bg-primary/5" : "border-transparent")}>
-                      <span className={cn("grid size-4 shrink-0 place-items-center rounded-full border", p.model === m.id && "border-primary bg-primary")}>{p.model === m.id && <span className="size-1.5 rounded-full bg-white" />}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-medium">{m.name} {m.star && <Star className="mb-0.5 inline size-3 fill-primary text-primary" />}</span>
-                        <span className="block text-[12px] text-muted-foreground">{m.note}</span>
-                      </span>
-                      {!m.ready && <span className="shrink-0 text-[11px] text-warning">add key</span>}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
+              <Group label={`${providerName[p.provider]} models`}>
+                {p.models.filter((m) => m.via === p.provider).map((m) => (
+                  <button type="button" key={m.id} onClick={() => (m.ready ? p.onModel(m.id) : setSection("keys"))} className={tapRow}>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1">{m.name} {m.star && <Star className="size-3 fill-primary text-primary" />}</span>
+                      <span className="block truncate text-[11.5px] text-muted-foreground">{m.note}</span>
+                    </span>
+                    {!m.ready && <span className="shrink-0 text-[11.5px] text-warning">add key</span>}
+                    {p.model === m.id && <Selected />}
+                  </button>
+                ))}
+              </Group>
+            </>
           )}
 
           {section === "keys" && (
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-[14px] font-medium">Your keys</h3>
-                <p className="text-[12px] text-muted-foreground">Kept on this computer only (in your .ucode folder). Each is checked before it is saved.</p>
-              </div>
+            <Group footer="Kept on this computer only (in your .ucode folder). Each is checked before it is saved.">
               {KEYS.map((k) => <KeyRow key={k.name} k={k} set={p.keys[k.key]} onChanged={p.onChanged} />)}
-            </div>
+            </Group>
           )}
 
           {section === "permissions" && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[14px] font-medium">What ucode may do in</h3>
-                <FolderChooser />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => post("command", { text: "/permissions ask", folder: notesFolder }).then(() => { toast.success("ucode will ask before running commands here"); setPerm((n) => n + 1); })}>Ask before running commands</Button>
-                <Button size="sm" variant="outline" onClick={() => post("command", { text: "/permissions auto", folder: notesFolder }).then(() => { toast.success("ucode runs commands here without asking"); setPerm((n) => n + 1); })}>Run them without asking</Button>
-              </div>
+            <>
+              <Group>{folderRow}</Group>
+              <Group label="Running commands">
+                <button type="button" className={cn(tapRow, "text-primary")} onClick={() => setPermissions("ask", "ucode will ask before running commands here")}>Ask before running commands</button>
+                <button type="button" className={cn(tapRow, "text-primary")} onClick={() => setPermissions("auto", "ucode runs commands here without asking")}>Run them without asking</button>
+              </Group>
               <CommandPage key={perm} text="/permissions" folder={notesFolder} intro="Changing files outside the folder always asks first. “Always allow” at a question adds to the allowed list." />
-            </div>
+            </>
           )}
 
           {section === "notes" && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[14px] font-medium">Notes for</h3>
-                <FolderChooser />
-              </div>
-              <p className="text-[12px] text-muted-foreground">ucode reads these at the start of every request in this folder (its UCODE.md): how you like things, what the project is.</p>
-              {notes === null ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : (
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Use plain CSS. Keep every page working on a phone." className="h-64 w-full rounded-xl border bg-background p-3 font-mono text-[12.5px] outline-none focus:border-primary/50" />
-              )}
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => post("memory", { folder: notesFolder, text: notes ?? "" }).then(() => toast.success("Notes saved"))}>Save notes</Button>
-                <Button size="sm" variant="outline" onClick={() => { p.onLearn(notesFolder); p.onOpenChange(false); }}>Let ucode learn this project</Button>
-              </div>
-            </div>
+            <>
+              <Group>{folderRow}</Group>
+              <Group footer="ucode reads these at the start of every request in this folder (its UCODE.md): how you like things, what the project is.">
+                {notes === null ? (
+                  <div className="px-3 py-2.5"><LoaderCircle className="size-3.5 animate-spin text-muted-foreground" /></div>
+                ) : (
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    aria-label="Project notes"
+                    placeholder="e.g. Use plain CSS. Keep every page working on a phone."
+                    className="block h-56 w-full resize-none bg-transparent px-3 py-2.5 font-mono text-[12px] outline-none"
+                  />
+                )}
+              </Group>
+              <Group>
+                <button type="button" className={cn(tapRow, "text-primary")} onClick={() => post("memory", { folder: notesFolder, text: notes ?? "" }).then(() => toast.success("Notes saved")).catch((e) => toast.error(e.message))}>Save notes</button>
+                <button type="button" className={cn(tapRow, "text-primary")} onClick={() => { p.onLearn(notesFolder); p.onOpenChange(false); }}>Let ucode learn this project</button>
+              </Group>
+            </>
           )}
 
           {section === "skills" && <CommandPage text="/skills" folder={p.folder} intro="What ucode knows how to do. It pulls one in by itself when a request matches. Add your own as a folder with a SKILL.md under .ucode/skills." />}
           {section === "addons" && <CommandPage text="/mcp" folder={p.folder} intro="Add-ons (MCP servers) give ucode extra tools. Add one from a terminal: ucode mcp add <name> <command>." />}
           {section === "doctor" && <CommandPage text="/doctor" folder={p.folder} intro="Your keys, the internet, the browser ucode checks apps in, and updates. It can take a minute." />}
 
+          {section === "data" && (
+            <Group label="History" footer="Deletes every chat in ucode. Your projects and the files ucode made stay.">
+              <button type="button" className={cn(tapRow, "text-destructive")} onClick={p.onClearChats}>Clear all chats</button>
+            </Group>
+          )}
+
           {section === "about" && (
-            <div className="flex h-full flex-col items-center justify-center text-center">
-              <Logo className="size-14 rounded-2xl text-3xl" />
-              <h3 className="mt-4 text-xl font-semibold">ucode</h3>
-              <p className="text-[13px] text-muted-foreground">Version {p.version}</p>
-              <p className="mt-3 font-serif text-[17px] italic">{p.credit}</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">Free software under the AGPL-3.0, with no warranty</p>
-              <div className="mt-5 flex gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openLink("https://github.com/sppideey/ucode-agent")}><GitBranch className="size-3.5" /> GitHub</Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openLink("https://www.npmjs.com/package/ucode-agent")}><Package className="size-3.5" /> npm</Button>
+            <>
+              <div className="flex flex-col items-center pb-5 pt-3 text-center">
+                <Logo className="size-12" />
+                <p className="mt-3 text-[15px] font-semibold">ucode</p>
+                <p className="text-[12px] text-muted-foreground">Version {p.version}</p>
+                <p className="mt-2 text-[13px]">{p.credit}</p>
               </div>
-            </div>
+              <Group footer="Free software under the AGPL-3.0, with no warranty.">
+                <button type="button" className={tapRow} onClick={() => openLink("https://github.com/sppideey/ucode-agent")}>
+                  <GitBranch className="size-3.5 text-muted-foreground" /> <span className="flex-1">GitHub</span> <ChevronRight className="size-3.5 text-muted-foreground" />
+                </button>
+                <button type="button" className={tapRow} onClick={() => openLink("https://www.npmjs.com/package/ucode-agent")}>
+                  <Package className="size-3.5 text-muted-foreground" /> <span className="flex-1">npm</span> <ChevronRight className="size-3.5 text-muted-foreground" />
+                </button>
+              </Group>
+            </>
           )}
         </div>
       </DialogContent>

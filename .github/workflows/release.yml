@@ -47,6 +47,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update files, so an installed app can trust and install a new release.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'ucode desktop ${{ github.ref_name }}'
@@ -58,6 +61,7 @@ jobs:
             - **Mac:** download `ucode_*_universal.dmg`, drag ucode into Applications, and the first time right-click ucode → Open → Open.
 
             Then open ucode → Settings → Keys and add a free Google or OpenRouter key.
+          includeUpdaterJson: true
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

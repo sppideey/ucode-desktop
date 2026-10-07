@@ -1,13 +1,16 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, RotateCcw, X } from "lucide-react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  AppWindow, Check, ChevronRight, CircleAlert, Copy, Dot, FilePen, FileText, Globe, LoaderCircle, RotateCcw, Search,
+  ShieldQuestion, Terminal, X, type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Composer } from "./composer";
-import type { Item, Keys, Model, Provider, Step } from "./data";
+import type { Item, Keys, Model, Provider } from "./data";
 import { Markdown } from "./markdown";
 
 type Props = {
@@ -34,7 +37,7 @@ function Action({ label, onClick, children }: { label: string; onClick: () => vo
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" onClick={onClick} aria-label={label} className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+        <button type="button" onClick={onClick} aria-label={label} className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           {children}
         </button>
       </TooltipTrigger>
@@ -43,186 +46,261 @@ function Action({ label, onClick, children }: { label: string; onClick: () => vo
   );
 }
 
-function Steps({ steps, count, live }: { steps: Step[]; count?: number; live: boolean }) {
-  const [open, setOpen] = useState(false);
-  const total = steps.length || count || 0;
-  if (!total) return null;
-  const failed = steps.filter((s) => s.ok === false).length;
-  const expanded = open || live;
+/** What kind of work a step is, from ucode's label ("Reading files", "Running npm test", ...). */
+const kinds: [RegExp, LucideIcon][] = [
+  [/^(Reading|Listing|Mapping|Looking up|Asking what)\b/, FileText],
+  [/^(Writing|Editing|Renaming|Adding|Fixing|Updating)\b/, FilePen],
+  [/^Creating\b/, AppWindow],
+  [/^(Running|Deploying|Starting)\b/, Terminal],
+  [/^(Looking at|Opening)\b/, Globe],
+  [/^(Searching|Finding|Loading)\b/, Search],
+];
+const iconOf = (text: string) => kinds.find(([re]) => re.test(text))?.[1] ?? Dot;
+const writes = (text: string) => /^(Writing|Editing|Creating|Renaming|Adding)\b/.test(text);
+
+/** The label, with commands, file names, paths and links in mono. */
+function Label({ text }: { text: string }) {
+  const run = /^(Running) (?!\d+ commands together$)(.+?)( in the background)?$/.exec(text);
+  if (run) return <>{run[1]} <code className="font-mono text-[11.5px] text-foreground">{run[2]}</code>{run[3]}</>;
+  return text.split(/(\S*[./\\]\S*\w)/).map((part, i) =>
+    i % 2 ? <code key={i} className="font-mono text-[11.5px] text-foreground">{part}</code> : part);
+}
+
+const took = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+};
+
+/** The tool log: one row per step, open while ucode works, folded into one line after. */
+function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: boolean }) {
+  const [open, setOpen] = useState<boolean | null>(null); // null: follow live
+  const { steps, count } = item;
+  const work = steps.filter((s) => !s.narration);
+  const total = work.length || count || 0;
+  if (!total) return steps.map((s, i) => <p key={i} className="text-[12px] italic leading-snug text-muted-foreground">{s.text}</p>);
+  const failed = work.filter((s) => s.ok === false).length;
+  // ponytail: one write step counts as one file (or its "N files" result), so a file written twice counts twice.
+  const files = work.filter((s) => writes(s.text)).reduce((n, s) => n + Number(/(\d+) files?\b/.exec(s.result ?? "")?.[1] ?? 1), 0);
+  const ms = item.start && item.end ? item.end - item.start : 0;
+  const expanded = steps.length > 0 && (open ?? live);
+  const summary = [
+    ms >= 1000 && `Worked ${took(ms)}`,
+    `${total} step${total === 1 ? "" : "s"}`,
+    files > 0 && `${files} file${files === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(" · ");
+
   return (
-    <div className="text-[13px]">
+    <div className="text-[12.5px]">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!expanded)}
+        disabled={!steps.length}
         aria-expanded={expanded}
-        className="-ml-1 flex items-center gap-1 rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
+        className="-ml-1 flex h-6 items-center gap-1 rounded-md px-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none"
       >
-        <ChevronRight className={cn("size-3.5 transition-transform duration-200", expanded && "rotate-90")} />
-        {live ? <span className="shimmer font-medium">Working…</span> : <span>{total} step{total === 1 ? "" : "s"}</span>}
-        {failed > 0 && <span className="text-destructive/90">· {failed} needed another go</span>}
+        {steps.length > 0 && <ChevronRight className={cn("size-3.5 transition-transform duration-150", expanded && "rotate-90")} />}
+        {live ? <span className="shimmer font-medium">Working</span> : <span>{summary}</span>}
+        {live && <span className="text-muted-foreground/70">· {total} step{total === 1 ? "" : "s"}</span>}
+        {failed > 0 && <span className="text-destructive">· {failed} failed</span>}
       </button>
-      {steps.length > 0 && expanded && (
-        <ul className="mt-1.5 ml-[7px] space-y-1.5 border-l pl-3.5">
-          {steps.map((s, i) => (
-            <li key={i} className="flex items-start gap-2">
-              {s.ok === false ? <X className="mt-[3px] size-3.5 shrink-0 text-destructive" strokeWidth={2.5} />
-                : s.result !== undefined || !live || i < steps.length - 1 ? <Check className="mt-[3px] size-3.5 shrink-0 text-success" strokeWidth={2.5} />
-                  : <LoaderCircle className="mt-[3px] size-3.5 shrink-0 animate-spin text-muted-foreground" />}
-              <div className="min-w-0 leading-snug">
-                <p className={cn("break-words", s.narration ? "text-muted-foreground" : "text-foreground/85")}>{s.text}</p>
-                {s.result && <p className={cn("mt-0.5 break-words text-[12px]", s.ok === false ? "text-destructive" : "text-muted-foreground")}>{s.result}</p>}
-              </div>
-            </li>
-          ))}
+      {expanded && (
+        <ul className="mt-1 overflow-hidden rounded-lg border bg-muted/40">
+          {steps.map((s, i) => {
+            if (s.narration) return <li key={i} className="border-t px-2.5 py-1 text-[12px] italic text-muted-foreground first:border-t-0">{s.text}</li>;
+            const running = live && i === steps.length - 1 && s.result === undefined;
+            const Icon = iconOf(s.text);
+            return (
+              <li key={i} className="flex min-h-7 items-start gap-2 border-t px-2.5 py-[5px] first:border-t-0">
+                {s.ok === false ? <X className="mt-px size-3.5 shrink-0 text-destructive" strokeWidth={2.5} />
+                  : running ? <LoaderCircle className="mt-px size-3.5 shrink-0 animate-spin text-primary" />
+                    : <Icon className="mt-px size-3.5 shrink-0 text-muted-foreground" />}
+                <span className={cn("min-w-0 flex-1 break-words leading-[18px]", running ? "text-foreground" : "text-foreground/80")}><Label text={s.text} /></span>
+                {s.result && (
+                  <span title={s.result} className={cn("max-w-[45%] shrink-0 truncate text-right text-[11.5px] leading-[18px]", s.ok === false ? "text-destructive" : "text-muted-foreground")}>
+                    {s.result}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
 
-/** iOS alert: a white card, title, detail, then the buttons in a row. */
-const alertCard = "rounded-2xl bg-card p-4 shadow-[0_1px_2px_rgb(0_0_0/0.05),0_10px_30px_-12px_rgb(0_0_0/0.25)] ring-1 ring-border";
-const alertButton = "flex h-9 min-w-[120px] flex-1 basis-0 items-center justify-center truncate rounded-xl px-3 text-[14px] font-medium transition-[filter,background-color] active:scale-[0.98]";
+/** ucode's design header ("App: X | Tone: Y | Accent: ..."), which is for ucode and not for you. */
+const tidy = (text: string) => text.split("\n").filter((l) => !/^App: .*\| Tone:/.test(l)).join("\n").replace(/^\s*\n/, "");
 
+const CLAMP = 168; // about 8 lines at 13.5px
+
+/** An answer: compact, with long ones folded to about 8 lines until you ask for the rest. */
+function Reply({ item, last, busy, onUndo }: { item: Extract<Item, { kind: "reply" }>; last: boolean; busy: boolean; onUndo: () => void }) {
+  const text = tidy(item.text);
+  const body = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => { setLong(!item.streaming && (body.current?.scrollHeight ?? 0) > CLAMP + 40); }, [text, item.streaming]);
+  const folded = long && !more;
+  if (!text.trim()) return null;
+
+  return (
+    <div className="group">
+      <div
+        ref={body}
+        style={folded ? { maxHeight: CLAMP } : undefined}
+        className={cn(folded && "overflow-hidden [mask-image:linear-gradient(to_bottom,black_65%,transparent)]")}
+      >
+        <Markdown text={text} />
+      </div>
+      {!item.streaming && (
+        <div className="-ml-1 mt-0.5 flex items-center gap-0.5">
+          {long && (
+            <button type="button" onClick={() => setMore((v) => !v)} className="mr-1 h-6 rounded-md px-1.5 text-[12px] font-medium text-primary transition-colors hover:bg-primary/10">
+              {more ? "Show less" : "Show more"}
+            </button>
+          )}
+          <div className="flex gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <Action label="Copy" onClick={() => { navigator.clipboard?.writeText(text); toast.success("Copied"); }}>
+              <Copy className="size-3.5" />
+            </Action>
+            {last && !busy && (
+              <Action label="Undo this turn" onClick={onUndo}>
+                <RotateCcw className="size-3.5" />
+              </Action>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const small = "inline-flex h-7 max-w-full items-center justify-center truncate rounded-md px-2.5 text-[12px] font-medium transition-[filter,background-color] active:scale-[0.98]";
+
+/** A question from ucode: a compact inline card with small buttons. */
 function Question({ item }: { item: Extract<Item, { kind: "question" }> }) {
   const answer = (value: unknown) => post("answer", { id: item.qid, value }).catch(() => toast.error("That question has gone. The turn was stopped."));
+  const card = cn("rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]", item.answered ? "opacity-60" : "border-primary/35");
+
   if (item.ask === "pick") {
     return (
-      <div className={cn(alertCard, item.answered && "opacity-60")}>
-        <p className="mb-3 text-center text-[15px] font-semibold">{item.title ?? "Choose one"}</p>
-        <div className="overflow-hidden rounded-xl bg-muted">
+      <div className={card}>
+        <p className="flex items-center gap-1.5 text-[12.5px] font-semibold"><ShieldQuestion className="size-3.5 text-primary" />{item.title ?? "Choose one"}</p>
+        <div className="mt-2 overflow-hidden rounded-md border">
           {item.items?.map((label, i) => (
             <button
               key={i}
               type="button"
               disabled={item.answered}
               onClick={() => answer(i)}
-              className={cn(
-                "relative flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[14px] transition-colors hover:bg-accent disabled:pointer-events-none",
-                i > 0 && "before:absolute before:inset-x-3.5 before:top-0 before:h-px before:bg-border",
-              )}
+              className="flex w-full items-center gap-2 border-t px-2.5 py-1.5 text-left text-[12.5px] transition-colors first:border-t-0 hover:bg-accent disabled:pointer-events-none"
             >
               <span className="min-w-0 flex-1">{label}</span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" />
             </button>
           ))}
         </div>
-        <button type="button" disabled={item.answered} onClick={() => answer(null)} className="mt-2 w-full rounded-xl py-2 text-[14px] font-medium text-primary transition-colors hover:bg-accent disabled:pointer-events-none">
-          Cancel
-        </button>
+        {!item.answered
+          ? <div className="mt-2 flex justify-end"><button type="button" onClick={() => answer(null)} className={cn(small, "text-muted-foreground hover:bg-accent hover:text-foreground")}>Cancel</button></div>
+          : <p className="mt-2 text-[11.5px] text-muted-foreground">Answered</p>}
       </div>
     );
   }
+
   return (
-    <div className={cn(alertCard, item.answered && "opacity-60")}>
-      <p className="text-center text-[15px] font-semibold leading-snug">{item.action}</p>
-      {item.detail && <pre className="mt-2.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3 py-2 font-mono text-[12px] text-muted-foreground">{item.detail}</pre>}
+    <div className={card}>
+      <p className="flex items-start gap-1.5 text-[12.5px] font-semibold leading-snug">
+        <ShieldQuestion className="mt-px size-3.5 shrink-0 text-primary" />
+        <span className="min-w-0 break-words">{item.action}</span>
+      </p>
+      {item.detail && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground">{item.detail}</pre>}
       {!item.answered ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className={cn(alertButton, "bg-accent text-foreground hover:brightness-95 dark:hover:brightness-125")} onClick={() => answer(false)}>Don&apos;t allow</button>
+        <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
+          <button type="button" className={cn(small, "text-muted-foreground hover:bg-accent hover:text-foreground")} onClick={() => answer(false)}>Don&apos;t allow</button>
           {item.always && (
-            <button type="button" className={cn(alertButton, "bg-accent text-primary hover:brightness-95 dark:hover:brightness-125")} onClick={() => answer("always")} title={`Always allow ${item.always}`}>
+            <button type="button" className={cn(small, "bg-accent text-foreground hover:brightness-95 dark:hover:brightness-125")} onClick={() => answer("always")} title={`Always allow ${item.always}`}>
               Always allow {item.always}
             </button>
           )}
-          <button type="button" className={cn(alertButton, "bg-primary text-primary-foreground hover:brightness-110")} onClick={() => answer(true)}>Allow once</button>
+          <button type="button" className={cn(small, "bg-primary text-primary-foreground hover:brightness-110")} onClick={() => answer(true)}>Allow once</button>
         </div>
-      ) : <p className="mt-3 text-center text-[12px] text-muted-foreground">Answered</p>}
+      ) : <p className="mt-2 text-[11.5px] text-muted-foreground">Answered</p>}
     </div>
   );
 }
 
-/** A conversation: what you asked, how ucode is getting on, and what it says back. */
+/** A conversation: what you asked, the tool log of what ucode did, and what it says back. */
 export function Chat({ items, spinner, busy, plan, models, model, onModel, mode, onMode, onKeys, provider, onProvider, keys, onSend, onStop, onUndo }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const last = items.at(-1);
   // Braces matter: newer browsers return a promise from scrollIntoView, and React would call it on cleanup.
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [items.length, last, spinner]);
-  const lastSteps = items.map((i) => i.kind).lastIndexOf("steps");
 
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[760px] space-y-5 px-6 pb-6 pt-8">
+        <div className="mx-auto w-full max-w-[720px] space-y-3.5 px-5 pb-5 pt-1 text-[13px]">
           {items.map((m, i) => {
             if (m.kind === "user") {
               return (
-                <div key={m.id} className="flex flex-col items-end gap-1.5 pl-10">
+                <div key={m.id} className="relative rounded-lg bg-muted py-2 pl-3.5 pr-3 before:absolute before:inset-y-2 before:left-0 before:w-[2.5px] before:rounded-full before:bg-primary/70">
                   {m.files && m.files.length > 0 && (
-                    <div className="flex max-w-[75%] flex-wrap justify-end gap-1.5">
+                    <div className="mb-1.5 flex flex-wrap gap-1">
                       {m.files.map((f) => (
-                        <span key={f} className="flex max-w-full items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[12px] text-foreground/80">
-                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span key={f} className="flex h-5 max-w-full items-center gap-1 rounded-[5px] bg-accent px-1.5 font-mono text-[11px] text-foreground/80">
+                          <FileText className="size-3 shrink-0 text-muted-foreground" />
                           <span className="truncate">{f.replace(/^[0-9a-f]{8}-/, "")}</span>
                         </span>
                       ))}
                     </div>
                   )}
-                  <div className="max-w-[75%] whitespace-pre-wrap break-words rounded-[20px] rounded-br-[6px] bg-primary px-4 py-2 text-[15px] leading-[1.4] text-primary-foreground">{m.text}</div>
+                  <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.5]">{m.text}</p>
                 </div>
               );
             }
-            if (m.kind === "reply") {
-              return (
-                <div key={m.id} className="group">
-                  <Markdown text={m.text} />
-                  {!m.streaming && (
-                    <div className="-ml-1.5 mt-1 flex gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                      <Action label="Copy" onClick={() => { navigator.clipboard?.writeText(m.text); toast.success("Copied"); }}>
-                        <Copy className="size-3.5" />
-                      </Action>
-                      {i === items.length - 1 && !busy && (
-                        <Action label="Undo this turn" onClick={onUndo}>
-                          <RotateCcw className="size-3.5" />
-                        </Action>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            if (m.kind === "steps") return <Steps key={m.id} steps={m.steps} count={m.count} live={busy && i === lastSteps && i === items.length - 1} />;
+            if (m.kind === "reply") return <Reply key={m.id} item={m} last={i === items.length - 1} busy={busy} onUndo={onUndo} />;
+            if (m.kind === "steps") return <Steps key={m.id} item={m} live={busy && i === items.length - 1} />;
             if (m.kind === "question") return <Question key={m.id} item={m} />;
-            if (m.kind === "note") return <p key={m.id} className="whitespace-pre-wrap text-[13px] text-muted-foreground">{m.text}</p>;
+            if (m.kind === "note") return <p key={m.id} className="whitespace-pre-wrap text-[12px] leading-snug text-muted-foreground">{m.text}</p>;
             if (m.kind === "lines") {
               return (
-                <div key={m.id} className="rounded-xl bg-muted px-3.5 py-3">
-                  {m.title && <p className="mb-1.5 text-[13px] font-semibold">{m.title}</p>}
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-muted-foreground">{m.lines.join("\n").replace(/^\n+|\n+$/g, "")}</pre>
+                <div key={m.id} className="rounded-lg border bg-muted/40 px-3 py-2">
+                  {m.title && <p className="mb-1 text-[12.5px] font-semibold">{m.title}</p>}
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-muted-foreground">{m.lines.join("\n").replace(/^\n+|\n+$/g, "")}</pre>
                 </div>
               );
             }
             return (
-              <div key={m.id} className="flex gap-2.5 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-[13px]">
-                <CircleAlert className="mt-px size-4 shrink-0 text-destructive" />
+              <div key={m.id} className="flex gap-2 rounded-lg border border-destructive/25 bg-destructive/8 px-3 py-2 text-[12.5px]">
+                <CircleAlert className="mt-px size-3.5 shrink-0 text-destructive" />
                 <div className="min-w-0 break-words"><p>{m.text}</p>{m.fix && <p className="mt-0.5 text-muted-foreground">{m.fix}</p>}</div>
               </div>
             );
           })}
           {busy && (
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              <span className="shimmer">{spinner ?? "Working…"}</span>
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <LoaderCircle className="size-3 animate-spin" />
+              <span className="shimmer truncate">{spinner ?? "Working…"}</span>
             </div>
           )}
           <div ref={end} />
         </div>
       </div>
-      <div className="mx-auto w-full max-w-[760px] px-6 pb-3">
+      <div className="mx-auto w-full max-w-[720px] px-5 pb-4">
         {plan.length > 0 && busy && (
-          <div className="mb-2 space-y-1 rounded-2xl bg-card px-3.5 py-2.5 text-[12.5px] ring-1 ring-border">
+          <div className="mb-1.5 space-y-0.5 rounded-lg border bg-card px-3 py-2 text-[12px]">
             {plan.map((p, i) => (
               <p key={i} className={cn("flex items-center gap-2", p.done && "text-muted-foreground line-through")}>
                 {p.done
-                  ? <span className="grid size-3.5 shrink-0 place-items-center rounded-full bg-success text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>
-                  : <span className="size-3.5 shrink-0 rounded-full border-[1.5px] border-muted-foreground/40" />}
+                  ? <span className="grid size-3 shrink-0 place-items-center rounded-full bg-success text-white"><Check className="size-2" strokeWidth={4} /></span>
+                  : <span className="size-3 shrink-0 rounded-full border-[1.5px] border-muted-foreground/40" />}
                 {p.text}
               </p>
             ))}
           </div>
         )}
         <Composer onSend={onSend} models={models} model={model} onModel={onModel} mode={mode} onMode={onMode} onKeys={onKeys} provider={provider} onProvider={onProvider} keys={keys} busy={busy} onStop={onStop} autoFocus />
-        <p className="mt-2 text-center text-[11px] text-muted-foreground/80">ucode checks its own work, and Undo puts everything back.</p>
       </div>
     </div>
   );
