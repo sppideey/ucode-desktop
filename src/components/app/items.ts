@@ -28,7 +28,10 @@ export function apply(items: Item[], e: Event): Item[] {
       const group = lastSteps(items);
       if (!group || !group.steps.length) return items;
       const steps = [...group.steps];
-      steps[steps.length - 1] = { ...steps[steps.length - 1], result: text, ok: e.ok !== false };
+      // The step that finished: the last real one, not a note or a line of narration said after it began.
+      let at = steps.length - 1;
+      while (at > 0 && (steps[at].narration || steps[at].detail)) at--;
+      steps[at] = { ...steps[at], result: text, ok: e.ok !== false };
       return [...items.slice(0, -1), { ...group, steps, end: Date.now() }];
     }
     case "streamBegin":
@@ -51,7 +54,10 @@ export function apply(items: Item[], e: Event): Item[] {
       return text.trim() ? [...items, { kind: "reply", id: newId(), text }] : items;
     case "note":
     case "line":
-      return text.trim() ? [...items, { kind: "note", id: newId(), text }] : items;
+      if (!text.trim()) return items;
+      // Said while working (a deploy's "Live at…"): part of the steps, shown when they are opened.
+      if (lastSteps(items)?.steps.length) return addStep(items, { text, detail: true });
+      return [...items, { kind: "note", id: newId(), text }];
     case "lines":
     case "panel":
       return [...items, { kind: "lines", id: newId(), title: e.title as string | undefined, lines: (e.lines as string[]) ?? [] }];

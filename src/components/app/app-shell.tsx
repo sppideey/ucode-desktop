@@ -14,7 +14,8 @@ import { Home } from "./home";
 import { apply, fromTranscript } from "./items";
 import { ChatsPage, ProjectPage } from "./lists";
 import { Logo } from "./logo";
-import { ConfirmDialog, NameDialog } from "./name-dialog";
+import { COMMANDS } from "./composer";
+import { ConfirmDialog, InfoDialog, NameDialog } from "./name-dialog";
 import { PreviewPanel } from "./preview-panel";
 import { ProjectDialog } from "./project-dialog";
 import { SettingsDialog } from "./settings-dialog";
@@ -88,6 +89,7 @@ export function AppShell() {
   const [renaming, setRenaming] = useState<ChatMeta | null>(null);
   const [deleting, setDeleting] = useState<ChatMeta | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [info, setInfo] = useState<{ title: string; empty: string; rows: { label: string; value: string }[] } | null>(null);
   const loaded = useRef(new Set<string>()); // chats whose saved conversation is in `items`
   const arriving = useRef(new Map<string, Event[]>()); // events for a chat while it is being fetched
   const viewRef = useRef(view);
@@ -284,6 +286,22 @@ export function AppShell() {
       case "/resume": go({ kind: "chats" }); return;
       case "/clear": return; // the window has no screen to clear
       case "/model": if (!rest.length) { openSettings("models"); return; } break;
+      // Pages of their own, not lines in the chat.
+      case "/doctor": openSettings("doctor"); return;
+      case "/skills": openSettings("skills"); return;
+      case "/mcp": openSettings("addons"); return;
+      case "/permissions": if (!rest.length) { openSettings("permissions", to.folder); return; } break;
+      case "/help": setInfo({ title: "Commands", empty: "", rows: COMMANDS.map((c) => ({ label: c.name, value: c.what })) }); return;
+      case "/stats": {
+        const empty = "Nothing counted yet. Stats start with the first message you send in this chat.";
+        try {
+          const r = to.chat ? await get<{ rows: { label: string; value: string }[] }>("stats", { chat: to.chat }) : { rows: [] };
+          setInfo({ title: "Stats", empty, rows: r.rows });
+        } catch (e) {
+          oops(e, "Could not get the stats");
+        }
+        return;
+      }
     }
     askToNotify();
     try {
@@ -328,6 +346,16 @@ export function AppShell() {
       await post("provider", { provider });
     } catch (e) {
       oops(e, "Could not switch");
+    }
+    refresh();
+  };
+
+  /** The model a provider starts on: set in Settings. */
+  const changeDefault = async (provider: Provider, id: string) => {
+    try {
+      await post("default", { provider, model: id });
+    } catch (e) {
+      oops(e, "Could not set it");
     }
     refresh();
   };
@@ -434,7 +462,7 @@ export function AppShell() {
     );
   }
 
-  const provider: Provider = state.provider ?? state.models.find((m) => m.id === state.model)?.via ?? "google";
+  const provider = state.providers.find((p) => p.id === state.provider);
   const folder = homeFolder ?? state.defaultFolder;
   const chatId = view.kind === "chat" ? view.id : null;
   const saved = chatId ? state.chats.find((c) => c.id === chatId) : undefined;
@@ -468,16 +496,14 @@ export function AppShell() {
     onModel: changeModel,
     mode,
     onMode: setMode,
-    onKeys: () => openSettings("keys"),
+    onProviders: () => openSettings("models"),
     provider,
-    onProvider: changeProvider,
-    keys: state.keys,
   };
 
   // No header: the sidebar and the work area both run to the top. Their top 32px move the window,
   // and the window buttons float in the top-right corner.
   return (
-    <div className="flex h-dvh bg-sidebar text-[13px]">
+    <div className="flex h-dvh bg-background text-[13px]">
       {sidebarOpen && (
         <Sidebar
           view={view}
@@ -495,7 +521,7 @@ export function AppShell() {
           onToggleSidebar={() => setSidebarOpen(false)}
         />
       )}
-      <main className={cn("flex min-w-0 flex-1 overflow-hidden bg-background", sidebarOpen && "border-l border-sidebar-border")}>
+      <main className="flex min-w-0 flex-1 overflow-hidden bg-background">
         {/* The chat and the preview split the area right of the sidebar exactly in half. */}
         <section className="flex min-w-0 flex-1 basis-0 flex-col">
           <DragStrip className={cn("px-2", tauri && !panelShown && CLEAR_OF_CONTROLS)}>
@@ -514,6 +540,7 @@ export function AppShell() {
                 onOpenFolder={() => setProjectDialog(true)}
                 onStart={(text, files) => send(text, files, { folder })}
                 name={name}
+                other={state.providers.find((p) => p.id !== state.provider && p.hasKey)?.name}
                 {...picker}
               />
             )}
@@ -578,11 +605,10 @@ export function AppShell() {
         open={settings.open}
         section={settings.section}
         onOpenChange={(open) => setSettings((s) => ({ ...s, open }))}
-        models={state.models}
-        model={state.model}
-        onModel={changeModel}
-        provider={provider}
+        providers={state.providers}
+        provider={state.provider}
         onProvider={changeProvider}
+        onDefault={changeDefault}
         keys={state.keys}
         folder={settings.folder ?? chatFolder ?? folder}
         projects={state.projects}
@@ -624,6 +650,7 @@ export function AppShell() {
         action="Delete"
         onConfirm={() => { if (deleting) deleteChat(deleting); }}
       />
+      <InfoDialog open={info !== null} onOpenChange={(v) => !v && setInfo(null)} title={info?.title ?? ""} empty={info?.empty ?? ""} rows={info?.rows ?? []} />
       <ConfirmDialog
         open={clearing}
         onOpenChange={setClearing}

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { post, upload } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { Keys, Model, Provider } from "./data";
+import type { Model, ProviderInfo } from "./data";
 import { record, type Recording } from "./mic";
 import { ModelPicker, Segmented } from "./model-picker";
 
@@ -42,10 +42,8 @@ type Props = {
   onModel: (id: string) => void;
   mode: "build" | "plan";
   onMode: (m: "build" | "plan") => void;
-  onKeys: () => void;
-  provider: Provider;
-  onProvider: (p: Provider) => void;
-  keys: Keys;
+  onProviders: () => void;
+  provider: ProviderInfo | undefined;
   big?: boolean;
   busy?: boolean;
   onStop?: () => void;
@@ -58,7 +56,7 @@ type Attached = { name: string; path: string };
 const plain = "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
 /** Where you type: the message, files or the mic, build or plan, and which model. */
-export function Composer({ placeholder = "Ask ucode to build or change something…", onSend, models, model, onModel, mode, onMode, onKeys, provider, onProvider, keys, big, busy, onStop, autoFocus }: Props) {
+export function Composer({ placeholder = "Ask ucode to build or change something…", onSend, models, model, onModel, mode, onMode, onProviders, provider, big, busy, onStop, autoFocus }: Props) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
   const [adding, setAdding] = useState(0);
@@ -254,7 +252,7 @@ export function Composer({ placeholder = "Ask ucode to build or change something
           />
 
           <div className="ml-auto flex min-w-0 items-center gap-1">
-            <ModelPicker models={models} value={model} onChange={onModel} onKeys={onKeys} provider={provider} onProvider={onProvider} keys={keys} />
+            <ModelPicker models={models} value={model} onChange={onModel} onProviders={onProviders} provider={provider} />
             <button
               type="button"
               onClick={() => (mic === "on" ? toggleMic(true) : runLocal(text.trim()) || send())}

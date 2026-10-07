@@ -1,10 +1,12 @@
 // What the app gets from ucode: the models, the chats, and what happens in a turn.
 
-export type Provider = "google" | "openrouter";
-export type Model = { id: string; name: string; note: string; context: number; star: boolean; via: Provider; ready: boolean; spentUntil: number | null };
+export type Provider = string; // "google", "openrouter", "nvidia"
+export type Model = { id: string; name: string; note: string; context: number | null; star: boolean; ready: boolean; spentUntil: number | null };
+/** A provider: its key, its default model, and (once its key is added) every one of its free models. */
+export type ProviderInfo = { id: Provider; name: string; note: string; env: string; hint: string; link: string; steps: string[]; hasKey: boolean; default: string; models: Model[] };
 export type ChatMeta = { id: string; title: string; folder: string; updatedAt: string; createdAt: string; preview: string; turns: number };
 export type Project = { path: string; name: string; exists: boolean };
-export type Keys = { google: boolean; openrouter: boolean; vercel: boolean; tavily: boolean };
+export type Keys = { vercel: boolean; tavily: boolean };
 
 export type State = {
   version: string;
@@ -12,7 +14,8 @@ export type State = {
   ucodeVersion?: string;
   credit: string;
   model: string;
-  provider?: Provider; // missing from an older ucode: then it is the current model's
+  provider: Provider;
+  providers: ProviderInfo[];
   mode: "build" | "plan";
   running: string | null;
   models: Model[];
@@ -32,7 +35,7 @@ export type Item =
   | { kind: "lines"; id: string; title?: string; lines: string[] }
   | { kind: "error"; id: string; text: string; fix?: string };
 
-export type Step = { text: string; result?: string; ok?: boolean; narration?: boolean };
+export type Step = { text: string; result?: string; ok?: boolean; narration?: boolean; detail?: boolean };
 
 /** One event from ucode, as the server sends it. */
 export type Event = { chat: string; type: string; [key: string]: unknown };
@@ -42,8 +45,6 @@ export type View =
   | { kind: "chat"; id: string }
   | { kind: "chats" }
   | { kind: "project"; path: string };
-
-export const providerName: Record<Provider, string> = { google: "Google", openrouter: "OpenRouter" };
 
 export const newId = () => Math.random().toString(36).slice(2, 10);
 

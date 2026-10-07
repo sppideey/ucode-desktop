@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FolderClosed, FolderOpen, KeyRound, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Composer } from "./composer";
-import { type Keys, type Model, type Project, type Provider, folderName, providerName, sameFolder } from "./data";
+import { type Model, type Project, type ProviderInfo, folderName, sameFolder } from "./data";
 import { Logo } from "./logo";
 
 function greeting(hour: number) {
@@ -26,16 +26,15 @@ type Props = {
   onModel: (id: string) => void;
   mode: "build" | "plan";
   onMode: (m: "build" | "plan") => void;
-  onKeys: () => void;
-  provider: Provider;
-  onProvider: (p: Provider) => void;
-  keys: Keys;
+  onProviders: () => void;
+  provider: ProviderInfo | undefined;
+  /** Another provider whose key is added, to suggest when this one has none. */
+  other?: string;
 };
 
 /** The start: a greeting, where the work goes, and one place to type. */
-export function Home({ folder, defaultFolder, projects, onFolder, onOpenFolder, onStart, name, onKeys, ...composer }: Props) {
-  const { provider, keys } = composer;
-  const other: Provider = provider === "google" ? "openrouter" : "google";
+export function Home({ folder, defaultFolder, projects, onFolder, onOpenFolder, onStart, name, other, ...composer }: Props) {
+  const { provider, onProviders } = composer;
   const [hello, setHello] = useState("Hello");
   useEffect(() => { setHello(greeting(new Date().getHours())); }, []);
 
@@ -48,20 +47,20 @@ export function Home({ folder, defaultFolder, projects, onFolder, onOpenFolder, 
             {hello}{name && `, ${name}`}
           </h1>
         </div>
-        {!keys[provider] && (
-          <button onClick={onKeys} className="mb-3 flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left text-[13px] ring-1 ring-border transition-colors hover:bg-accent/60">
+        {provider && !provider.hasKey && (
+          <button onClick={onProviders} className="mb-3 flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left text-[13px] ring-1 ring-border transition-colors hover:bg-accent/60">
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-warning/15 text-warning"><KeyRound className="size-4" /></span>
             <span className="min-w-0 flex-1 leading-snug">
-              <span className="block font-semibold">Add your free {providerName[provider]} key to start</span>
+              <span className="block font-semibold">Add your free {provider.name} key to start</span>
               <span className="block text-muted-foreground">
-                ucode is set to use {providerName[provider]}&apos;s models, and they need its key. Click here to add it
-                {keys[other] ? `, or switch to ${providerName[other]} in the model menu below.` : "."}
+                ucode is set to use {provider.name}&apos;s models, and they need its key. Click here to add it
+                {other ? `, or switch to ${other} in Settings.` : "."}
               </span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />
           </button>
         )}
-        <Composer big autoFocus placeholder="What should we build today?" onSend={onStart} onKeys={onKeys} {...composer} />
+        <Composer big autoFocus placeholder="What should we build today?" onSend={onStart} {...composer} />
         <div className="mt-3.5 flex justify-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

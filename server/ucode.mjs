@@ -5,8 +5,8 @@
  * The app does not change ucode. It loads the copy installed on this computer
  * (`npm i -g ucode-agent`; main.mjs finds it and sets UCODE_AGENT_DIR) and adds,
  * in this process only:
- *   - a choice of provider: Google, or OpenRouter's free models (through
- *     ucode's own "another server" setting, UCODE_BASE_URL);
+ *   - a choice of provider: Google, or OpenRouter's or NVIDIA's free models
+ *     (through ucode's own "another server" setting, UCODE_BASE_URL);
  *   - no paid models in the lists;
  *   - keys saved from the app's Settings;
  *   - streaming and the preview panel for each chat's agent.
@@ -28,6 +28,7 @@ const [loop, provider, history, attach, opener, voice, context, version, theme, 
 ]);
 
 export const { loadSkills } = skills;
+export const { statsLines } = loop;
 export const { readServers, USER_MCP, projectMcpFile } = mcp;
 
 export const { load: loadSession, save: saveSession, remove: removeSession } = history;
@@ -44,88 +45,168 @@ export const { model, resetConnection, providerKey, DEFAULT_MODEL, BASE_URL, ENV
 
 // -- providers -----------------------------------------------------------------
 
-export const OPENROUTER_URL = 'https://openrouter.ai/api/v1';
-export const OPENROUTER_DEFAULT = 'nvidia/nemotron-3-super-120b-a12b:free';
-
-/** OpenRouter's free models, each tried with a whole-app build (2026-10-06). */
-const OPENROUTER_MODELS = {
-  'nvidia/nemotron-3-super-120b-a12b:free': {
-    name: 'Nemotron 3 Super', context: 262_144, star: true,
-    note: 'NVIDIA, free — quick, built a whole app in 72s, sometimes fumbles a big write',
+/**
+ * Who runs the model: Google (ucode's own), or a server ucode reaches through its
+ * "another server" setting (UCODE_BASE_URL). Only ones that are free with no card.
+ * Left out (2026-10): Groq (its free limit, 8K tokens a minute, is less than one
+ * ucode request), Mistral (it refuses stream_options, which ucode sends), Cerebras
+ * (now wants a card) and GitHub Models (closed).
+ */
+export const PROVIDERS = {
+  google: {
+    name: 'Google Gemini', env: 'GEMINI_API_KEY', shape: /^(?:AIza[\w-]{30,}|AQ\.[\w.-]{30,})$/, hint: 'AIza…',
+    link: 'https://aistudio.google.com/apikey', default: DEFAULT_MODEL,
+    note: 'Free key from Google, no card. The most reliable.',
+    steps: ['Click “Get one free”. It opens Google AI Studio.', 'Sign in with your Google account.', 'Click “Create API key” and copy it (it starts with AIza).', 'Click Add here, paste it, and press Check & save.'],
   },
-  'nvidia/nemotron-3-ultra-550b-a55b:free': {
-    name: 'Nemotron 3 Ultra', context: 1_000_000,
-    note: 'NVIDIA\'s biggest, free — good for questions, unsteady on whole apps',
+  openrouter: {
+    name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', env: 'OPENROUTER_API_KEY', shape: /^sk-or-[\w-]{20,}$/, hint: 'sk-or-…',
+    link: 'https://openrouter.ai/keys', default: 'nvidia/nemotron-3-super-120b-a12b:free',
+    note: 'Every free model on OpenRouter. About 50 free requests a day.',
+    steps: ['Click “Get one free”. It opens openrouter.ai.', 'Sign up free (Google or GitHub is quickest).', 'Click “Create API Key”, name it ucode, and copy it (it starts with sk-or-).', 'Click Add here, paste it, and press Check & save.'],
   },
-  'google/gemma-4-31b-it:free': {
-    name: 'Gemma 4 31B', context: 262_144,
-    note: 'Google\'s open model, free on OpenRouter — very busy, often makes you wait',
+  nvidia: {
+    name: 'NVIDIA', url: 'https://integrate.api.nvidia.com/v1', env: 'NVIDIA_API_KEY', shape: /^nvapi-[\w-]{20,}$/, hint: 'nvapi-…',
+    link: 'https://build.nvidia.com/settings/api-keys', default: 'nvidia/nemotron-3-super-120b-a12b',
+    note: 'NVIDIA’s own free models, very quick. No card.',
+    steps: ['Click “Get one free”. It opens build.nvidia.com.', 'Sign up free (no card).', 'Click “Generate API Key” and copy it (it starts with nvapi-).', 'Click Add here, paste it, and press Check & save.'],
   },
 };
 
-export const openRouterKey = () => (process.env.OPENROUTER_API_KEY || '').trim();
-const onOpenRouter = () => /openrouter\.ai/i.test(process.env.UCODE_BASE_URL || '');
+/** Each tried with ucode (2026-10): a whole app on OpenRouter, a streamed tool call on NVIDIA. */
+const TRIED = {
+  'nvidia/nemotron-3-super-120b-a12b:free': 'NVIDIA, free — quick, built a whole app in 72s, sometimes fumbles a big write',
+  'nvidia/nemotron-3-ultra-550b-a55b:free': 'NVIDIA’s biggest, free — good for questions, unsteady on whole apps',
+  'google/gemma-4-31b-it:free': 'Google’s open model, free — very busy, often makes you wait',
+  'nvidia/nemotron-3-super-120b-a12b': 'free — the quickest here, answers in about a second',
+  'nvidia/nemotron-3-ultra-550b-a55b': 'NVIDIA’s biggest, free — slower, more careful',
+  'nvidia/nemotron-3.5-lightning-30b-a3b': 'free — small and quick',
+  'openai/gpt-oss-20b': 'OpenAI’s open model, free — quick, smaller',
+};
 
-/** Who answers for a model id. */
-export const serviceFor = (id = model()) => (OPENROUTER_MODELS[id] || String(id).includes('/') ? 'openrouter' : 'google');
+/**
+ * NVIDIA lists every model it hosts; these kinds can use tools. Not offered: ones a
+ * free account cannot use (they answer 404) and ones that never answered (2026-10-07).
+ */
+const NVIDIA_AGENTIC = /^(?:nvidia\/nemotron-\d+(?:\.\d+)?-(?:super|ultra|lightning)-|moonshotai\/kimi|z-ai\/glm|deepseek-ai\/deepseek-v\d|openai\/gpt-oss|qwen\/qwen3|meta\/llama-4|minimaxai\/minimax)/;
+const NVIDIA_NOT = new Set([
+  'moonshotai/kimi-k2.6', 'moonshotai/kimi-k3', 'z-ai/glm-5.3', 'z-ai/glm-5.3-flash', 'deepseek-ai/deepseek-v4.1-flash',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+]);
 
-/** Whether the key that model needs is saved. */
-export const hasKeyFor = (id = model()) => (serviceFor(id) === 'openrouter' ? Boolean(openRouterKey()) : Boolean(providerKey()));
+/** "nvidia/nemotron-3-super-120b-a12b" → "Nemotron 3 Super 120B A12B". */
+const pretty = (id) => id.split('/').pop().replace(/:free$/, '').split('-')
+  .filter((w) => w && w !== 'it' && w !== 'instruct')
+  .map((w) => (/^(?:\d|[a-z]\d)|^(?:gpt|oss|glm|xs)$/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+  .join(' ');
 
-/** Switch model, and with it the server ucode talks to. */
+const entry = (id, name, context = null) => ({ id, name, context, note: TRIED[id] ?? 'free — not tried with ucode yet' });
+
+// Each provider's models, as it last offered them. Until the lists arrive: the tried ones.
+const offered = {
+  openrouter: Object.keys(TRIED).filter((id) => id.endsWith(':free')).map((id) => entry(id, pretty(id))),
+  nvidia: Object.keys(TRIED).filter((id) => !id.endsWith(':free')).map((id) => entry(id, pretty(id))),
+};
+
+let current = 'google';
+const userContext = process.env.UCODE_MAX_CONTEXT_TOKENS;
+
+/** The provider in use. */
+export const providerNow = () => current;
+
+/** Whether a provider's key is saved. */
+export const hasKey = (id = current) => Boolean((process.env[PROVIDERS[id]?.env] || '').trim());
+
+/** The default first, then the ones tried with ucode, then by name. */
+const order = (provider) => (a, b) => (b.id === PROVIDERS[provider].default) - (a.id === PROVIDERS[provider].default)
+  || Object.hasOwn(TRIED, b.id) - Object.hasOwn(TRIED, a.id) || a.name.localeCompare(b.name);
+
+/** A provider's models, every one free: Google's without the paid ones, the others as they list them. */
+export function modelList(id = current) {
+  const ready = hasKey(id);
+  if (id === 'google') {
+    const now = Date.now();
+    return provider.modelList()
+      .filter((m) => !m.paid)
+      .map(({ id: m, name, note, context: ctx, star, spentUntil }) => ({ id: m, name, note, context: ctx, star: Boolean(star), ready, spentUntil: spentUntil > now ? spentUntil : null }));
+  }
+  return [...offered[id]].sort(order(id)).map((m) => ({ ...m, star: m.id === PROVIDERS[id].default, ready, spentUntil: null }));
+}
+
+/** Switch model within the provider in use: only to one of its free models. */
 export function setModel(id) {
-  if (serviceFor(id) === 'openrouter') {
-    process.env.UCODE_BASE_URL = OPENROUTER_URL;
-    process.env.UCODE_API_KEY = openRouterKey();
-  } else if (onOpenRouter()) {
+  const found = modelList().find((m) => m.id === id);
+  if (!found) throw Object.assign(new Error(`That is not one of ${PROVIDERS[current].name}'s free models.`), { status: 400 });
+  // A small model's window, so ucode folds the conversation before it overflows.
+  if (current !== 'google' && found.context) process.env.UCODE_MAX_CONTEXT_TOKENS = String(found.context);
+  else if (userContext) process.env.UCODE_MAX_CONTEXT_TOKENS = userContext;
+  else delete process.env.UCODE_MAX_CONTEXT_TOKENS;
+  return provider.setModel(id);
+}
+
+/** Use another provider, on `id` - else its default, else its first model. Nothing changes when it has none. */
+export function useProvider(name, id) {
+  const info = PROVIDERS[name];
+  if (!info) throw Object.assign(new Error('no such provider'), { status: 400 });
+  const list = modelList(name);
+  const pick = [id, info.default, list[0]?.id].find((m) => m && list.some((x) => x.id === m));
+  if (!pick) throw Object.assign(new Error(`${info.name} has no free models right now. Check the internet is on.`), { status: 503 });
+  current = name;
+  if (info.url) {
+    process.env.UCODE_BASE_URL = info.url;
+    process.env.UCODE_API_KEY = (process.env[info.env] || '').trim();
+  } else {
     delete process.env.UCODE_BASE_URL;
     delete process.env.UCODE_API_KEY;
   }
   resetConnection();
-  return provider.setModel(id);
+  return setModel(pick);
 }
 
-/** Every model the app offers: Google's free ones (never a paid one) and OpenRouter's. */
-export function modelList() {
-  const now = Date.now();
-  const google = provider.modelList()
-    .filter((m) => !m.paid)
-    .map(({ id, name, note, context: ctx, star, spentUntil }) => ({ id, name, note, context: ctx, star: Boolean(star), via: 'google', ready: Boolean(providerKey()), spentUntil: spentUntil > now ? spentUntil : null }));
-  const openrouter = Object.entries(OPENROUTER_MODELS)
-    .map(([id, m]) => ({ id, name: m.name, note: m.note, context: m.context, star: Boolean(m.star), via: 'openrouter', ready: Boolean(openRouterKey()), spentUntil: null }));
-  return [...google, ...openrouter];
-}
-
-let qwenChecked = false;
-
-/** New free Google models (ucode's own check), and a free Qwen on OpenRouter the day there is one. */
-export async function discoverModels(opts = {}) {
-  const found = onOpenRouter() ? [] : await provider.discoverModels(opts).catch(() => []);
-  if (!qwenChecked || opts.again) {
-    qwenChecked = true;
-    try {
-      const res = await fetch(`${OPENROUTER_URL}/models`, { signal: AbortSignal.timeout(6000) });
-      for (const m of res.ok ? (await res.json()).data ?? [] : []) {
-        const id = String(m.id ?? '');
-        if (OPENROUTER_MODELS[id] || !/^qwen\/[\w.-]+:free$/.test(id)) continue;
-        if (Number(m.pricing?.prompt) !== 0 || Number(m.pricing?.completion) !== 0) continue;
-        if (!(m.supported_parameters ?? []).includes('tools')) continue;
-        OPENROUTER_MODELS[id] = {
-          name: String(m.name || id).replace(/^[^:]+:\s*/, '').replace(/\s*\(free\)\s*$/i, '').slice(0, 40),
-          context: Number(m.context_length) || 128_000,
-          note: 'new on OpenRouter, free — not yet tried with ucode',
-        };
-        found.push(id);
-      }
-    } catch { /* offline: the list stays as it is */ }
+/** Each provider's models from its own public list, so new free ones appear by themselves. Google's: while it is in use. */
+export async function refreshModels() {
+  const read = (url) => fetch(url, { signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const [or, nv] = await Promise.all([read(`${PROVIDERS.openrouter.url}/models`), read(`${PROVIDERS.nvidia.url}/models`)]);
+  const free = (m) => /:free$/.test(m.id) && Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0
+    && (m.supported_parameters ?? []).includes('tools');
+  if (or?.data?.length) {
+    offered.openrouter = or.data.filter(free).map((m) => entry(
+      m.id, String(m.name || m.id).replace(/^[^:]+:\s*/, '').replace(/\s*\(free\)\s*$/i, '').slice(0, 40), Number(m.context_length) || null,
+    ));
   }
-  return found;
+  if (nv?.data?.length) {
+    offered.nvidia = nv.data.map((m) => String(m.id)).filter((id) => NVIDIA_AGENTIC.test(id) && !/embed|safety|reward|guard|vision|omni/.test(id) && !NVIDIA_NOT.has(id)).map((id) => entry(id, pretty(id)));
+  }
+  if (current === 'google') await provider.discoverModels().catch(() => []);
 }
 
-/** What the mic heard. On OpenRouter a Gemini model listens, so the mic needs a Google key there. */
+/** Is this a key that works? Asked of the service itself. NVIDIA's list is public, so it gets one tiny request. */
+export async function checkKey(name, value) {
+  const ask = (url, init = {}) => fetch(url, { ...init, headers: { Authorization: `Bearer ${value}`, ...init.headers }, signal: AbortSignal.timeout(20_000) })
+    .then((r) => { r.body?.cancel().catch(() => {}); return r.status; });
+  try {
+    if (name === 'GEMINI_API_KEY') return (await ask(`${BASE_URL}/models`)) === 200 ? null : 'Google did not accept this key.';
+    if (name === 'OPENROUTER_API_KEY') return (await ask(`${PROVIDERS.openrouter.url}/key`)) === 200 ? null : 'OpenRouter did not accept this key.';
+    if (name === 'VERCEL_TOKEN') return (await ask('https://api.vercel.com/v2/user')) === 200 ? null : 'Vercel did not accept this token.';
+    if (name === 'NVIDIA_API_KEY') {
+      const status = await ask(`${PROVIDERS.nvidia.url}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: PROVIDERS.nvidia.default, max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
+      });
+      if (status === 200 || status === 429) return null; // 429: the key works, NVIDIA is just busy
+      return status === 401 || status === 403 ? 'NVIDIA did not accept this key.' : `NVIDIA did not answer properly (${status}). Try again in a minute.`;
+    }
+  } catch {
+    return 'Could not reach the service to check the key — is the internet on?';
+  }
+  return null;
+}
+
+/** What the mic heard. Off Google a Gemini model listens, so the mic needs a Google key there. */
 export async function transcribe(wav) {
-  if (!onOpenRouter()) return provider.transcribe(wav);
-  if (!providerKey()) throw new Error('The mic needs a free Google key — add one in Settings → Keys.');
+  if (current === 'google') return provider.transcribe(wav);
+  if (!providerKey()) throw new Error('The mic needs a free Google key — add one in Settings → Models.');
   const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${providerKey()}`, 'Content-Type': 'application/json' },
@@ -146,14 +227,6 @@ export async function transcribe(wav) {
 }
 
 // -- keys ------------------------------------------------------------------------
-
-/** Which variable a pasted key belongs in, by its shape. */
-export function keyName(key) {
-  const k = String(key ?? '').trim();
-  if (/^(?:AIza[\w-]{30,}|AQ\.[\w.-]{30,})$/.test(k)) return 'GEMINI_API_KEY';
-  if (/^sk-or-[\w-]{20,}$/.test(k)) return 'OPENROUTER_API_KEY';
-  return null;
-}
 
 /** Write one NAME=value line to ~/.ucode/.env (null removes it), keeping the rest, owner-only. */
 export async function saveEnv(name, value) {
@@ -176,7 +249,8 @@ export async function saveEnv(name, value) {
   await fs.chmod(ENV_FILE, 0o600).catch(() => {});
   if (value === null) delete process.env[name];
   else process.env[name] = value;
-  if (name === 'OPENROUTER_API_KEY' && onOpenRouter()) process.env.UCODE_API_KEY = value ?? '';
+  // The provider in use reads its key from UCODE_API_KEY: a new one counts at once.
+  if (PROVIDERS[current].url && PROVIDERS[current].env === name) process.env.UCODE_API_KEY = value ?? '';
 }
 
 // -- chats ---------------------------------------------------------------------------

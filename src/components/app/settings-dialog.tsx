@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import {
-  BookOpen, Check, ChevronRight, GitBranch, HardDrive, KeyRound, LoaderCircle, Package, Palette, Plug, ShieldCheck, Sparkles, Star, Stethoscope, Wand2, X,
+  BookOpen, Check, ChevronRight, GitBranch, HardDrive, KeyRound, LoaderCircle, Package, Palette, Plug, ShieldCheck, Sparkles, Stethoscope, Wand2, X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { get, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { type Keys, type Model, type Project, type Provider, folderName, providerName } from "./data";
+import { type Keys, type Project, type ProviderInfo, folderName } from "./data";
 import { Logo } from "./logo";
 
 // iOS system colours. Blue is the theme's own, so picking it clears the override.
@@ -37,11 +37,9 @@ const SECTIONS = [
 ] as const;
 type Section = (typeof SECTIONS)[number]["id"];
 
-type KeyInfo = { name: string; key: keyof Keys; title: string; text: string; link: string; hint: string; steps?: string[] };
+type KeyInfo = { name: string; key?: keyof Keys; title: string; text: string; link: string; hint: string; steps?: string[] };
 
 const KEYS: KeyInfo[] = [
-  { name: "GEMINI_API_KEY", key: "google", title: "Google key", text: "For the Gemini models. Free, no card.", link: "https://aistudio.google.com/apikey", hint: "AIza…" },
-  { name: "OPENROUTER_API_KEY", key: "openrouter", title: "OpenRouter key", text: "For the free NVIDIA and Gemma models on OpenRouter.", link: "https://openrouter.ai/keys", hint: "sk-or-…" },
   {
     name: "VERCEL_TOKEN", key: "vercel", title: "Vercel token",
     text: "Lets “Share online” put your apps on the internet and give you a link. Free.",
@@ -57,22 +55,16 @@ const KEYS: KeyInfo[] = [
   { name: "TAVILY_API_KEY", key: "tavily", title: "Web search key (optional)", text: "Better web search. 1000 free searches a month.", link: "https://tavily.com", hint: "tvly-…" },
 ];
 
-const PROVIDERS = [
-  { id: "google", title: "Google Gemini", text: "Free key from Google, no card. The most reliable." },
-  { id: "openrouter", title: "OpenRouter", text: "Free NVIDIA and Gemma models, with a free OpenRouter key." },
-] as const;
-
 const openLink = (url: string) => post("open", { target: url }).catch((e) => toast.error(e.message));
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   section?: string;
-  models: Model[];
-  model: string;
-  onModel: (id: string) => void;
-  provider: Provider;
-  onProvider: (p: Provider) => void;
+  providers: ProviderInfo[];
+  provider: string;
+  onProvider: (p: string) => void;
+  onDefault: (p: string, model: string) => void;
   keys: Keys;
   folder: string;
   projects: Project[];
@@ -315,44 +307,37 @@ export function SettingsDialog(p: Props) {
 
           {section === "models" && (
             <>
-              <Group label="Who runs the model" footer="Both are free. Each needs its own key, added under Keys.">
-                {PROVIDERS.map((x) => (
+              <Group label="Provider in use" footer="The model menu in the chat shows this provider's models only. Every one is free.">
+                {p.providers.map((x) => (
                   <button type="button" key={x.id} role="radio" aria-checked={p.provider === x.id} onClick={() => p.provider !== x.id && p.onProvider(x.id)} className={tapRow}>
                     <span className="min-w-0 flex-1">
-                      <span className="block">{x.title}</span>
-                      <span className="block text-[11.5px] text-muted-foreground">{x.text}</span>
+                      <span className="block">{x.name}</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{x.note}</span>
                     </span>
-                    {!p.keys[x.id] && <span className="shrink-0 text-[11.5px] text-warning">needs a key</span>}
+                    {!x.hasKey && <span className="shrink-0 text-[11.5px] text-warning">needs a key</span>}
                     {p.provider === x.id && <Selected />}
                   </button>
                 ))}
               </Group>
-              {!p.keys[p.provider] && (
-                <Group>
-                  <button type="button" onClick={() => setSection("keys")} className={cn(tapRow, "text-primary")}>
-                    <span className="flex-1">Add your {providerName[p.provider]} key</span>
-                    <ChevronRight className="size-3.5 text-muted-foreground" />
-                  </button>
+              {p.providers.map((x) => (
+                <Group key={x.id} label={x.name} footer={x.hasKey ? `${x.models.length} free models. The default is the one ucode starts on.` : undefined}>
+                  <KeyRow k={{ name: x.env, title: "Key", text: x.hasKey ? "Kept on this computer only." : "Free. These models need it.", link: x.link, hint: x.hint, steps: x.steps }} set={x.hasKey} onChanged={p.onChanged} />
+                  {x.hasKey && x.models.length > 0 && (
+                    <label className={row}>
+                      <span className="flex-1">Default model</span>
+                      <select value={x.default} onChange={(e) => p.onDefault(x.id, e.target.value)} aria-label={`${x.name} default model`} className="h-6 max-w-[240px] rounded-md bg-accent px-1.5 text-[12.5px] outline-none">
+                        {x.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                 </Group>
-              )}
-              <Group label={`${providerName[p.provider]} models`}>
-                {p.models.filter((m) => m.via === p.provider).map((m) => (
-                  <button type="button" key={m.id} onClick={() => (m.ready ? p.onModel(m.id) : setSection("keys"))} className={tapRow}>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1">{m.name} {m.star && <Star className="size-3 fill-primary text-primary" />}</span>
-                      <span className="block truncate text-[11.5px] text-muted-foreground">{m.note}</span>
-                    </span>
-                    {!m.ready && <span className="shrink-0 text-[11.5px] text-warning">add key</span>}
-                    {p.model === m.id && <Selected />}
-                  </button>
-                ))}
-              </Group>
+              ))}
             </>
           )}
 
           {section === "keys" && (
-            <Group footer="Kept on this computer only (in your .ucode folder). Each is checked before it is saved.">
-              {KEYS.map((k) => <KeyRow key={k.name} k={k} set={p.keys[k.key]} onChanged={p.onChanged} />)}
+            <Group footer="Kept on this computer only (in your .ucode folder). Each is checked before it is saved. The keys for models are under Models.">
+              {KEYS.map((k) => <KeyRow key={k.name} k={k} set={k.key ? p.keys[k.key] : false} onChanged={p.onChanged} />)}
             </Group>
           )}
 

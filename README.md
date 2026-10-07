@@ -13,7 +13,7 @@ Say what you want built, watch it being made, click around in it, undo anything.
 - **Code and changes** — read every file, see what changed in green and red, and **Undo** a turn or all of them.
 - **Share online** — one click, or just say it: "make me a quiz app and put it online" builds it and gives you the link (free Vercel token).
 - **Your chats** — every chat in the sidebar, each with Rename and Delete; search everything with Ctrl+K; work in any folder you open.
-- **Your choice of free AI** — Google Gemini or OpenRouter (NVIDIA Nemotron, Gemma). No paid models.
+- **Your choice of free AI** — Google Gemini, OpenRouter (every free model there) or NVIDIA (Nemotron and more). One provider at a time, with a default model for each. No paid models.
 - **Settings in plain words** — keys, models, permissions, project notes, skills, add-ons, and a check that everything works.
 - **Updates itself** — a new version installs on its own and the app opens again on it.
 
@@ -23,7 +23,7 @@ Say what you want built, watch it being made, click around in it, undo anything.
 2. Download from [Releases](https://github.com/sppideey/ucode-desktop/releases):
    - **Windows:** `ucode_x.y.z_x64-setup.exe` — run it. Windows may warn because the app is new and unsigned: **More info → Run anyway**.
    - **Mac:** `ucode_x.y.z_universal.dmg` — open it and drag ucode into Applications. The first time, **right-click ucode → Open → Open** (the app is not signed by Apple yet).
-3. Open ucode. In **Settings → Keys**, add a free key: [Google](https://aistudio.google.com/apikey) or [OpenRouter](https://openrouter.ai/keys).
+3. Open ucode. In **Settings → Models**, add a free key: [Google](https://aistudio.google.com/apikey), [OpenRouter](https://openrouter.ai/keys) or [NVIDIA](https://build.nvidia.com/settings/api-keys).
    To share apps online, add a free Vercel token there too — the Keys page shows the steps.
 
 The terminal `ucode` is a separate program and is not changed by this app.

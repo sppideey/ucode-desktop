@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Composer } from "./composer";
-import type { Item, Keys, Model, Provider } from "./data";
+import type { Item, Model, ProviderInfo } from "./data";
 import { Markdown } from "./markdown";
 
 type Props = {
@@ -20,10 +20,8 @@ type Props = {
   onModel: (id: string) => void;
   mode: "build" | "plan";
   onMode: (m: "build" | "plan") => void;
-  onKeys: () => void;
-  provider: Provider;
-  onProvider: (p: Provider) => void;
-  keys: Keys;
+  onProviders: () => void;
+  provider: ProviderInfo | undefined;
   onSend: (text: string, files: string[]) => void;
   onStop: () => void;
   onUndo: () => void;
@@ -66,13 +64,13 @@ const took = (ms: number) => {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 };
 
-/** What ucode is doing, in plain words: one line per kind of work, open while it works, one line after. */
+/** What ucode is doing, in plain words: one line ("Working", then "Done in 40s"); the steps only when you open it. */
 function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: boolean }) {
-  const [open, setOpen] = useState<boolean | null>(null); // null: follow live
+  const [open, setOpen] = useState(false);
   const { steps, count } = item;
-  const work = steps.filter((s) => !s.narration);
-  const total = work.length || count || 0;
-  if (!total) return null;
+  const work = steps.filter((s) => !s.narration && !s.detail);
+  const details = steps.filter((s) => s.detail && !technical.test(s.text));
+  if (!live && !work.length && !count) return null;
   // The same kind of work twice in a row is one line: "Writing the code", not five file names.
   const rows: { said: string; Icon: LucideIcon; ok: boolean; at: number }[] = [];
   work.forEach((s, i) => {
@@ -82,20 +80,22 @@ function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: b
     else rows.push({ said, Icon, ok: s.ok !== false, at: i });
   });
   const ms = item.start && item.end ? item.end - item.start : 0;
-  const expanded = rows.length > 0 && (open ?? live);
-  const summary = ms >= 1000 ? `Done in ${took(ms)}` : "Done";
+  const openable = rows.length > 0 || details.length > 0;
+  const expanded = openable && open;
 
   return (
     <div className="text-[12.5px]">
       <button
         type="button"
         onClick={() => setOpen(!expanded)}
-        disabled={!rows.length}
+        disabled={!openable}
         aria-expanded={expanded}
         className="-ml-1 flex h-6 items-center gap-1 rounded-md px-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none"
       >
-        {rows.length > 0 && <ChevronRight className={cn("size-3.5 transition-transform duration-150", expanded && "rotate-90")} />}
-        {live ? <span className="shimmer font-medium">Working</span> : <span>{summary}</span>}
+        {openable && <ChevronRight className={cn("size-3.5 transition-transform duration-150", expanded && "rotate-90")} />}
+        {live ? (
+          <><LoaderCircle className="size-3 animate-spin" /><span className="shimmer font-medium">Working</span></>
+        ) : <span>{ms >= 1000 ? `Done in ${took(ms)}` : "Done"}</span>}
       </button>
       {expanded && (
         <ul className="mt-1 overflow-hidden rounded-lg border bg-muted/40">
@@ -111,6 +111,9 @@ function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: b
               </li>
             );
           })}
+          {details.map((d, i) => (
+            <li key={`d${i}`} className="whitespace-pre-wrap break-words border-t px-2.5 py-[5px] text-[12px] leading-snug text-muted-foreground first:border-t-0">{d.text}</li>
+          ))}
         </ul>
       )}
     </div>
@@ -124,7 +127,10 @@ function Steps({ item, live }: { item: Extract<Item, { kind: "steps" }>; live: b
 const tidy = (text: string) => text
   .split("\n")
   .filter((l) => !/^App: .*\| Tone:/.test(l) && !/^\(?\s*or open\b.*\bin your browser\s*\)?\.?$/i.test(l.trim()))
-  .map((l) => l.replace(/\.?\s*Open it here:\s*file:\/\/\S+/i, ". It is open in the preview on the right.").replace(/file:\/\/\/?\S+/g, "the preview"))
+  .map((l) => l.replace(/\.?\s*Open it here:\s*file:\/\/\S+/i, ". It is open in the preview on the right.").replace(/file:\/\/\/?\S+/g, "the preview")
+    // "(or open tasker/index.html in your browser)", and the page by its file name: it is "the app".
+    .replace(/,?\s*\(?(?:or\s+)?(?:just\s+)?open\s+`?[\w./\\-]+\.html?`?\s+in\s+(?:your|a|the)\s+browser\)?/gi, "")
+    .replace(/`?(?:[\w.-]+[\\/])*index\.html`?/g, "the app"))
   .join("\n")
   .replace(/\.\. /g, ". ")
   .replace(/\n{3,}/g, "\n\n")
@@ -237,7 +243,7 @@ function Question({ item }: { item: Extract<Item, { kind: "question" }> }) {
 }
 
 /** A conversation: what you asked, the tool log of what ucode did, and what it says back. */
-export function Chat({ items, spinner, busy, plan, models, model, onModel, mode, onMode, onKeys, provider, onProvider, keys, onSend, onStop, onUndo }: Props) {
+export function Chat({ items, spinner, busy, plan, models, model, onModel, mode, onMode, onProviders, provider, onSend, onStop, onUndo }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const last = items.at(-1);
   // Braces matter: newer browsers return a promise from scrollIntoView, and React would call it on cleanup.
@@ -285,10 +291,11 @@ export function Chat({ items, spinner, busy, plan, models, model, onModel, mode,
               </div>
             );
           })}
-          {busy && (
+          {/* One "Working" line: once there are steps, their line says it. */}
+          {busy && last?.kind !== "steps" && !(last?.kind === "reply" && last.streaming) && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <LoaderCircle className="size-3 animate-spin" />
-              <span className="shimmer truncate">{spinner ?? "Working…"}</span>
+              <span className="shimmer truncate">Working</span>
             </div>
           )}
           <div ref={end} />
@@ -307,7 +314,7 @@ export function Chat({ items, spinner, busy, plan, models, model, onModel, mode,
             ))}
           </div>
         )}
-        <Composer onSend={onSend} models={models} model={model} onModel={onModel} mode={mode} onMode={onMode} onKeys={onKeys} provider={provider} onProvider={onProvider} keys={keys} busy={busy} onStop={onStop} autoFocus />
+        <Composer onSend={onSend} models={models} model={model} onModel={onModel} mode={mode} onMode={onMode} onProviders={onProviders} provider={provider} busy={busy} onStop={onStop} autoFocus />
       </div>
     </div>
   );

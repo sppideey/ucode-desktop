@@ -29,9 +29,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  Agent, model, setModel, modelList, discoverModels, providerKey, openRouterKey, resetConnection, hasKeyFor, serviceFor,
-  DEFAULT_MODEL, OPENROUTER_DEFAULT, BASE_URL, OPENROUTER_URL, transcribe, listSessions, loadSession, saveSession,
-  removeSession, clearSessions, keyName, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
+  Agent, model, setModel, modelList, refreshModels, PROVIDERS, providerNow, useProvider, hasKey, checkKey, resetConnection,
+  statsLines, bare, transcribe, listSessions, loadSession, saveSession,
+  removeSession, clearSessions, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
   UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL, loadSkills, readServers, USER_MCP, projectMcpFile,
 } from './ucode.mjs';
 import { WebUI } from './webui.mjs';
@@ -156,27 +156,6 @@ function chooseFolder(platform = process.platform) {
   });
 }
 
-/** Is this a key that works? Asked of the service itself, with no reply generated. */
-async function checkKey(name, value) {
-  try {
-    if (name === 'GEMINI_API_KEY') {
-      const r = await fetch(`${BASE_URL}/models`, { headers: { Authorization: `Bearer ${value}` }, signal: AbortSignal.timeout(8000) });
-      return r.ok ? null : 'Google did not accept this key.';
-    }
-    if (name === 'OPENROUTER_API_KEY') {
-      const r = await fetch(`${OPENROUTER_URL}/key`, { headers: { Authorization: `Bearer ${value}` }, signal: AbortSignal.timeout(8000) });
-      return r.ok ? null : 'OpenRouter did not accept this key.';
-    }
-    if (name === 'VERCEL_TOKEN') {
-      const r = await fetch('https://api.vercel.com/v2/user', { headers: { Authorization: `Bearer ${value}` }, signal: AbortSignal.timeout(8000) });
-      return r.ok ? null : 'Vercel did not accept this token.';
-    }
-  } catch {
-    return 'Could not reach the service to check the key — is the internet on?';
-  }
-  return null;
-}
-
 /** What a saved conversation looks like in the window: what was said, not the working. */
 export function transcript(messages = []) {
   const items = [];
@@ -229,17 +208,23 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     await fs.writeFile(APP_FILE, JSON.stringify(data, null, 2));
   };
 
-  // Which provider the user chose: its default model, unless a model of it is already in use.
-  const providerNow = () => (serviceFor(model()) === 'openrouter' ? 'openrouter' : 'google');
-  const chooseProvider = (provider) => {
-    if (provider !== 'google' && provider !== 'openrouter') throw Object.assign(new Error('no such provider'), { status: 400 });
-    if (providerNow() !== provider) setModel(provider === 'openrouter' ? OPENROUTER_DEFAULT : DEFAULT_MODEL);
+  /** Every chat's agent on the model in use. */
+  const everyAgent = () => {
     for (const entry of chats.values()) { entry.agent.preferred = model(); entry.agent.session.model = model(); }
   };
-  const saved = (await readApp()).provider;
-  if (saved && !process.env.UCODE_MODEL) { try { chooseProvider(saved); } catch { /* an old file */ } }
-  // New free models are looked for once, in the background: the window never waits on the network for it.
-  discoverModels().catch(() => []);
+  /** The provider chosen in Settings, on the default model chosen for it there. */
+  const switchTo = (name, id) => { useProvider(name, id); everyAgent(); };
+  const saved = await readApp();
+  if (!process.env.UCODE_MODEL) {
+    try { switchTo(PROVIDERS[saved.provider] ? saved.provider : 'google', saved.defaults?.[saved.provider]); } catch { /* an old file */ }
+  }
+  // Each provider's free models are looked for in the background - now and every hour: the window never
+  // waits on the network. A default only on the full list goes on once the list is in, unless you picked another.
+  refreshModels().then(() => {
+    const wanted = saved.defaults?.[providerNow()];
+    if (wanted && !running && model() === PROVIDERS[providerNow()].default && modelList().some((m) => m.id === wanted)) switchTo(providerNow(), wanted);
+  }).catch(() => {});
+  setInterval(() => refreshModels().catch(() => {}), 60 * 60_000).unref();
   // The chat list is read once now; after that only changed files are read again.
   const warming = listSessions().catch(() => []);
 
@@ -431,13 +416,17 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       mode,
       provider: providerNow(),
       running,
-      models: modelList().map(({ id, name, note, context, star, via, ready, spentUntil }) => ({ id, name, note, context, star: Boolean(star), via: via ?? 'google', ready, spentUntil })),
-      keys: {
-        google: Boolean(providerKey()),
-        openrouter: Boolean(openRouterKey()),
-        vercel: Boolean(process.env.VERCEL_TOKEN),
-        tavily: Boolean(process.env.TAVILY_API_KEY),
-      },
+      models: modelList(),
+      // Every provider; the models of those with a key (and of the one in use).
+      providers: Object.entries(PROVIDERS).map(([id, p]) => {
+        const models = hasKey(id) || id === providerNow() ? modelList(id) : [];
+        const wanted = app.defaults?.[id];
+        return {
+          id, name: p.name, note: p.note, env: p.env, hint: p.hint, link: p.link, steps: p.steps, hasKey: hasKey(id), models,
+          default: models.some((m) => m.id === wanted) ? wanted : p.default,
+        };
+      }),
+      keys: { vercel: Boolean(process.env.VERCEL_TOKEN), tavily: Boolean(process.env.TAVILY_API_KEY) },
       defaultFolder: defaultFolder(),
       projects: [...folders].map((p) => ({ path: p, name: path.basename(p) || p, exists: existsSync(p) })),
       chats: sessions.filter((s) => s.messageCount > 0).map((s) => ({
@@ -493,14 +482,36 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
 
     'POST /api/model': async (b) => {
       setModel(String(b.id));
-      for (const entry of chats.values()) { entry.agent.preferred = model(); entry.agent.session.model = model(); }
-      return { model: model(), ready: hasKeyFor() };
+      everyAgent();
+      return { model: model(), ready: hasKey() };
     },
 
     'POST /api/provider': async (b) => {
-      chooseProvider(String(b.provider));
-      await writeApp({ ...(await readApp()), provider: String(b.provider) });
-      return { provider: providerNow(), model: model(), ready: hasKeyFor() };
+      const name = String(b.provider);
+      const app = await readApp();
+      switchTo(name, app.defaults?.[name]);
+      await writeApp({ ...app, provider: name });
+      return { provider: providerNow(), model: model(), ready: hasKey() };
+    },
+
+    // The model a provider starts on. For the provider in use, it is used from now on too.
+    'POST /api/default': async (b) => {
+      const name = String(b.provider);
+      const id = String(b.model);
+      if (!PROVIDERS[name]) throw fail(400, 'no such provider');
+      if (!modelList(name).some((m) => m.id === id)) throw fail(400, `That is not one of ${PROVIDERS[name].name}'s free models.`);
+      const app = await readApp();
+      await writeApp({ ...app, defaults: { ...app.defaults, [name]: id } });
+      if (name === providerNow()) { setModel(id); everyAgent(); }
+      return { ok: true, model: model() };
+    },
+
+    // /stats, for its popup: this chat's time, steps and tokens since the app opened it.
+    'GET /api/stats': async (q) => {
+      const agent = chats.get(String(q.get('chat') ?? ''))?.agent;
+      if (!agent?.stats) return { rows: [] };
+      const rows = statsLines(agent.stats, agent.session?.messages?.length ?? 0).map((l) => bare(l).trim()).filter(Boolean).slice(1);
+      return { rows: rows.map((l) => /^(\S+)\s{2,}(.*)$/.exec(l)).filter(Boolean).map(([, label, value]) => ({ label, value })) };
     },
 
     'POST /api/mode': async (b) => {
@@ -510,28 +521,33 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
 
     'POST /api/key': async (b) => {
       const name = String(b.name);
-      if (!['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'VERCEL_TOKEN', 'TAVILY_API_KEY'].includes(name)) throw Object.assign(new Error('not a key ucode keeps'), { status: 400 });
+      const owner = Object.keys(PROVIDERS).find((p) => PROVIDERS[p].env === name);
+      if (!owner && !['VERCEL_TOKEN', 'TAVILY_API_KEY'].includes(name)) throw fail(400, 'not a key ucode keeps');
       const value = b.value === null ? null : String(b.value ?? '').trim();
       if (value !== null) {
+        if (!value) return { ok: false, message: 'Paste the key first.' };
         // One line of plain text: a line break or a control character would write more into ~/.ucode/.env.
         if (value.length > 300 || value.startsWith('=') || /[\u0000-\u001f\u007f]/.test(value)) {
           return { ok: false, message: 'That does not look like a key — paste just the key, on one line.' };
         }
-        if ((name === 'GEMINI_API_KEY' || name === 'OPENROUTER_API_KEY') && keyName(value) !== name) {
-          return { ok: false, message: name === 'GEMINI_API_KEY' ? 'That is not a Google key — they start with AIza or AQ.' : 'That is not an OpenRouter key — they start with sk-or-' };
+        if (owner && !PROVIDERS[owner].shape.test(value)) {
+          return { ok: false, message: `That is not ${owner === 'google' ? 'a' : 'an'} ${PROVIDERS[owner].name} key — they start with ${PROVIDERS[owner].hint.replace('…', '')}` };
         }
-        if (!value) return { ok: false, message: 'Paste the key first.' };
         const problem = await checkKey(name, value);
         if (problem) return { ok: false, message: problem };
       }
       await saveEnv(name, value);
       resetConnection();
-      // The model in use has no key now, and the other kind does: switch to that.
-      if (!hasKeyFor()) {
-        if (providerKey()) setModel(DEFAULT_MODEL);
-        else if (openRouterKey()) setModel(OPENROUTER_DEFAULT);
+      // The provider in use has no key now, and another does: use that one - the one just added, if it was one.
+      if (!hasKey()) {
+        const other = owner && value !== null ? owner : Object.keys(PROVIDERS).find((p) => hasKey(p));
+        if (other) {
+          const app = await readApp();
+          switchTo(other, app.defaults?.[other]);
+          await writeApp({ ...app, provider: other });
+        }
       }
-      await discoverModels({ again: true }).catch(() => []);
+      refreshModels().catch(() => {});
       return { ok: true, message: value === null ? 'Key removed' : 'Key saved — it works', model: model() };
     },
 
@@ -593,25 +609,21 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       const ask = async (url, headers = {}) => {
         try { return (await fetch(url, { ...timed, headers })).status; } catch { return 0; }
       };
-      const key = (status, set, what) => (!set ? `-  ${what} — not added (Settings → Keys)`
-        : status >= 200 && status < 300 ? `✓  ${what} — works`
-          : status === 0 ? `?  ${what} — could not check (internet?)` : `✗  ${what} — rejected: add it again in Settings → Keys`);
+      const key = ([env, what], problem) => (!(process.env[env] || '').trim() ? `-  ${what} — not added (Settings → ${env === 'VERCEL_TOKEN' ? 'Keys' : 'Models'})`
+        : !problem ? `✓  ${what} — works` : /reach/.test(problem) ? `?  ${what} — could not check (internet?)` : `✗  ${what} — ${problem}`);
       const browsers = process.platform === 'win32'
         ? [['Microsoft Edge', path.join(process.env['ProgramFiles(x86)'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')], ['Google Chrome', path.join(process.env.ProgramFiles ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe')]]
         : [['Google Chrome', '/Applications/Google Chrome.app'], ['Microsoft Edge', '/Applications/Microsoft Edge.app'], ['Chrome', '/usr/bin/google-chrome'], ['Chromium', '/usr/bin/chromium']];
-      const [net, google, openrouter, vercel] = await Promise.all([
+      const keys = [...Object.values(PROVIDERS).map((p) => [p.env, `${p.name} key`]), ['VERCEL_TOKEN', 'Vercel token (putting apps online)']];
+      const [net, ...problems] = await Promise.all([
         ask('https://www.google.com/generate_204'),
-        providerKey() ? ask(`${BASE_URL}/models`, { Authorization: `Bearer ${providerKey()}` }) : 0,
-        openRouterKey() ? ask(`${OPENROUTER_URL}/key`, { Authorization: `Bearer ${openRouterKey()}` }) : 0,
-        process.env.VERCEL_TOKEN ? ask('https://api.vercel.com/v2/user', { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` }) : 0,
+        ...keys.map(([env]) => ((process.env[env] || '').trim() ? checkKey(env, process.env[env].trim()) : null)),
       ]);
       const browser = browsers.find(([, p]) => existsSync(p))?.[0];
       return {
         lines: [
           net ? '✓  Internet — on' : '✗  Internet — off: ucode needs it to reach the AI',
-          key(google, providerKey(), 'Google key'),
-          key(openrouter, openRouterKey(), 'OpenRouter key'),
-          key(vercel, process.env.VERCEL_TOKEN, 'Vercel token (Share online)'),
+          ...keys.map((k, i) => key(k, problems[i])),
           `✓  Node.js — ${process.version}`,
           `✓  ucode — ${UCODE_VERSION}`,
           browser ? `✓  Browser for checking apps — ${browser}` : '-  Browser for checking apps — none found: ucode skips its own look at the app',

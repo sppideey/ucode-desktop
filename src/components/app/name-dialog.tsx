@@ -79,3 +79,33 @@ export function ConfirmDialog({ open, onOpenChange, title, description, action, 
     </AlertDialog>
   );
 }
+
+/** A small popup of facts, label beside value: /stats, /help. */
+export function InfoDialog({ open, onOpenChange, title, empty, rows }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  empty: string;
+  rows: { label: string; value: string }[];
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false} className="max-h-[80vh] w-[420px] gap-0 overflow-hidden rounded-2xl bg-popover p-0 shadow-2xl backdrop-blur-xl sm:max-w-[420px]">
+        <div className="flex items-center border-b px-4 py-2.5">
+          <DialogTitle className="text-[14px] font-semibold">{title}</DialogTitle>
+          <DialogDescription className="sr-only">{title}</DialogDescription>
+          <button type="button" onClick={() => onOpenChange(false)} className="ml-auto h-6 rounded-md px-2 text-[12.5px] font-medium text-primary hover:bg-primary/10">Done</button>
+        </div>
+        <div className="overflow-y-auto px-4 py-2 [scrollbar-width:thin]">
+          {rows.length === 0 && <p className="py-3 text-[12.5px] text-muted-foreground">{empty}</p>}
+          {rows.map((r) => (
+            <div key={r.label} className="flex gap-3 border-b py-1.5 text-[12.5px] last:border-b-0">
+              <span className="w-24 shrink-0 font-medium">{r.label}</span>
+              <span className="min-w-0 flex-1 break-words text-muted-foreground">{r.value}</span>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
