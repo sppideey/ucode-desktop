@@ -29,7 +29,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  Agent, model, setModel, modelList, refreshModels, PROVIDERS, providerNow, useProvider, hasKey, checkKey, resetConnection,
+  Agent, model, setModel, modelList, refreshModels, PROVIDERS, providerNow, switchProvider, hasKey, checkKey, resetConnection,
   statsLines, bare, transcribe, listSessions, loadSession, saveSession,
   removeSession, clearSessions, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
   UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL, loadSkills, readServers, USER_MCP, projectMcpFile,
@@ -213,7 +213,7 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     for (const entry of chats.values()) { entry.agent.preferred = model(); entry.agent.session.model = model(); }
   };
   /** The provider chosen in Settings, on the default model chosen for it there. */
-  const switchTo = (name, id) => { useProvider(name, id); everyAgent(); };
+  const switchTo = (name, id) => { switchProvider(name, id); everyAgent(); };
   const saved = await readApp();
   if (!process.env.UCODE_MODEL) {
     try { switchTo(PROVIDERS[saved.provider] ? saved.provider : 'google', saved.defaults?.[saved.provider]); } catch { /* an old file */ }

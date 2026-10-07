@@ -145,7 +145,7 @@ export function setModel(id) {
 }
 
 /** Use another provider, on `id` - else its default, else its first model. Nothing changes when it has none. */
-export function useProvider(name, id) {
+export function switchProvider(name, id) {
   const info = PROVIDERS[name];
   if (!info) throw Object.assign(new Error('no such provider'), { status: 400 });
   const list = modelList(name);
