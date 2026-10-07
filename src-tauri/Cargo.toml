@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only - ucode, made and tested by om dixit. Additional terms: see NOTICE.
 [package]
 name = "ucode"
-version = "1.4.0"
+version = "1.5.0"
 description = "ucode desktop: a native window around the free coding agent. Made and tested by om dixit."
 authors = ["om dixit"]
 license = "AGPL-3.0-only"

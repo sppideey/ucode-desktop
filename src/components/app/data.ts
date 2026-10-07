@@ -3,7 +3,11 @@
 export type Provider = string; // "google", "openrouter", "nvidia"
 export type Model = { id: string; name: string; note: string; context: number | null; star: boolean; ready: boolean; spentUntil: number | null };
 /** A provider: its key, its default model, and (once its key is added) every one of its free models. */
-export type ProviderInfo = { id: Provider; name: string; note: string; env: string; hint: string; link: string; steps: string[]; hasKey: boolean; default: string; models: Model[] };
+/** paid: billed to your own account. local: runs on this computer (Ollama), no key; hasKey means it is running. */
+export type ProviderInfo = { id: Provider; name: string; note: string; env: string | null; hint: string; link: string; steps: string[]; paid: boolean; local: boolean; hasKey: boolean; default: string | null; models: Model[] };
+
+/** What a provider needs before its models work, in a few words. */
+export const needs = (p: ProviderInfo) => (p.local ? `Start Ollama on this computer` : `Add your ${p.paid ? "" : "free "}${p.name} key`);
 export type ChatMeta = { id: string; title: string; folder: string; updatedAt: string; createdAt: string; preview: string; turns: number };
 export type Project = { path: string; name: string; exists: boolean };
 export type Keys = { vercel: boolean; tavily: boolean };

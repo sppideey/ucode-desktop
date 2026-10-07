@@ -37,7 +37,7 @@ const SECTIONS = [
 ] as const;
 type Section = (typeof SECTIONS)[number]["id"];
 
-type KeyInfo = { name: string; key?: keyof Keys; title: string; text: string; link: string; hint: string; steps?: string[] };
+type KeyInfo = { name: string; key?: keyof Keys; title: string; text: string; link: string; hint: string; steps?: string[]; get?: string };
 
 const KEYS: KeyInfo[] = [
   {
@@ -168,9 +168,39 @@ function KeyRow({ k, set, onChanged }: { k: KeyInfo; set: boolean; onChanged: ()
         <div className="mt-1.5 flex flex-wrap gap-1">
           <button type="button" className={cn(smallButton, set ? "bg-accent hover:bg-accent/70" : "bg-primary text-primary-foreground hover:opacity-90")} onClick={() => setEditing(true)}>{set ? "Change" : "Add"}</button>
           {set && <button type="button" className={cn(smallButton, "text-destructive hover:bg-destructive/10")} disabled={busy} onClick={() => save(null)}>Remove</button>}
-          <button type="button" className={cn(smallButton, "text-primary hover:bg-primary/10")} onClick={() => openLink(k.link)}>Get one free</button>
+          <button type="button" className={cn(smallButton, "text-primary hover:bg-primary/10")} onClick={() => openLink(k.link)}>{k.get ?? "Get one free"}</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Ollama: no key, only whether it is running here, and the way to get it. */
+function LocalRow({ x, onChanged }: { x: ProviderInfo; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const again = () => {
+    setBusy(true);
+    post("models/refresh").then(onChanged).catch((e) => toast.error(e.message)).finally(() => setBusy(false));
+  };
+  return (
+    <div className="px-3 py-2.5">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium">On this computer</p>
+          <p className="text-[11.5px] text-muted-foreground">{x.hasKey ? `Running, with ${x.models.length} model${x.models.length === 1 ? "" : "s"}.` : "Ollama is not running here."}</p>
+        </div>
+        {x.hasKey ? <span className="flex shrink-0 items-center gap-1 text-[11.5px] text-success"><Check className="size-3" /> Running</span>
+          : <span className="shrink-0 text-[11.5px] text-muted-foreground">Not found</span>}
+      </div>
+      {!x.hasKey && (
+        <ol className="mt-2 list-decimal space-y-0.5 rounded-lg bg-muted/70 py-2 pl-7 pr-3 text-[12px] leading-snug">
+          {x.steps.map((s) => <li key={s}>{s}</li>)}
+        </ol>
+      )}
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        <button type="button" className={cn(smallButton, "bg-accent hover:bg-accent/70")} disabled={busy} onClick={again}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : "Check again"}</button>
+        {!x.hasKey && <button type="button" className={cn(smallButton, "text-primary hover:bg-primary/10")} onClick={() => openLink(x.link)}>Get Ollama</button>}
+      </div>
     </div>
   );
 }
@@ -307,25 +337,28 @@ export function SettingsDialog(p: Props) {
 
           {section === "models" && (
             <>
-              <Group label="Provider in use" footer="The model menu in the chat shows this provider's models only. Every one is free.">
+              <Group label="Provider in use" footer="The model menu in the chat shows this provider's models only. Google is the default. The paid ones bill your own account; the others are free.">
                 {p.providers.map((x) => (
                   <button type="button" key={x.id} role="radio" aria-checked={p.provider === x.id} onClick={() => p.provider !== x.id && p.onProvider(x.id)} className={tapRow}>
                     <span className="min-w-0 flex-1">
                       <span className="block">{x.name}</span>
                       <span className="block text-[11.5px] text-muted-foreground">{x.note}</span>
                     </span>
-                    {!x.hasKey && <span className="shrink-0 text-[11.5px] text-warning">needs a key</span>}
+                    {x.paid && <span className="shrink-0 rounded-[5px] bg-accent px-1.5 py-px text-[10px] font-semibold text-muted-foreground">PAID</span>}
+                    {!x.hasKey && <span className="shrink-0 text-[11.5px] text-warning">{x.local ? "not running" : "needs a key"}</span>}
                     {p.provider === x.id && <Selected />}
                   </button>
                 ))}
               </Group>
               {p.providers.map((x) => (
-                <Group key={x.id} label={x.name} footer={x.hasKey ? `${x.models.length} free models. The default is the one ucode starts on.` : undefined}>
-                  <KeyRow k={{ name: x.env, title: "Key", text: x.hasKey ? "Kept on this computer only." : "Free. These models need it.", link: x.link, hint: x.hint, steps: x.steps }} set={x.hasKey} onChanged={p.onChanged} />
+                <Group key={x.id} label={x.name} footer={x.hasKey ? `${x.models.length} ${x.paid ? "" : "free "}models. The default is the one ucode starts on.` : undefined}>
+                  {x.local ? <LocalRow x={x} onChanged={p.onChanged} /> : (
+                    <KeyRow k={{ name: x.env ?? "", title: "Key", text: x.hasKey ? "Kept on this computer only." : x.paid ? "Billed to your account by use." : "Free. These models need it.", link: x.link, hint: x.hint, steps: x.steps, get: x.paid ? "Get one" : "Get one free" }} set={x.hasKey} onChanged={p.onChanged} />
+                  )}
                   {x.hasKey && x.models.length > 0 && (
                     <label className={row}>
                       <span className="flex-1">Default model</span>
-                      <select value={x.default} onChange={(e) => p.onDefault(x.id, e.target.value)} aria-label={`${x.name} default model`} className="h-6 max-w-[240px] rounded-md bg-accent px-1.5 text-[12.5px] outline-none">
+                      <select value={x.default ?? ""} onChange={(e) => p.onDefault(x.id, e.target.value)} aria-label={`${x.name} default model`} className="h-6 max-w-[240px] rounded-md bg-accent px-1.5 text-[12.5px] outline-none">
                         {x.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </select>
                     </label>

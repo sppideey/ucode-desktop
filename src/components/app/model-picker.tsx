@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 import { Check, ChevronDown, ChevronRight, KeyRound, Search, Star } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { Model, ProviderInfo } from "./data";
+import { type Model, type ProviderInfo, needs } from "./data";
 
 /** iOS segmented control: a grey track with the chosen option on a raised white pill. */
 export function Segmented<T extends string>({ value, options, onChange, label, className }: {
@@ -99,8 +99,8 @@ export function ModelPicker({ models, value, onChange, onProviders, provider }: 
             <button onClick={onProviders} className="mb-1 flex w-full items-center gap-2.5 rounded-lg bg-warning/10 px-2.5 py-2 text-left text-[12px] transition-colors hover:bg-warning/15">
               <KeyRound className="size-4 shrink-0 text-warning" />
               <span className="min-w-0 flex-1">
-                <span className="block font-medium">Add your {name} key</span>
-                <span className="block text-muted-foreground">It is free, and these models need it.</span>
+                <span className="block font-medium">{needs(provider)}</span>
+                <span className="block text-muted-foreground">{provider.local ? "Then pull a model, and click Check again in Settings." : "These models need it."}</span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />
             </button>
@@ -132,7 +132,7 @@ export function ModelPicker({ models, value, onChange, onProviders, provider }: 
         </div>
 
         <p className="shrink-0 border-t px-3 py-1.5 text-[10.5px] leading-snug text-muted-foreground">
-          Every model here is free. {provider?.note ?? ""}
+          {provider?.paid ? `Paid: every request is billed to your ${name} account.` : provider?.local ? "Runs on this computer, free." : `Every model here is free. ${provider?.note ?? ""}`}
         </p>
       </PopoverContent>
     </Popover>

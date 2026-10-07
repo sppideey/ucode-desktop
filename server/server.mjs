@@ -29,7 +29,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  Agent, model, setModel, modelList, refreshModels, PROVIDERS, providerNow, switchProvider, hasKey, checkKey, resetConnection,
+  Agent, model, setModel, modelList, defaultModel, refreshModels, PROVIDERS, providerNow, switchProvider, hasKey, checkKey, resetConnection,
   statsLines, bare, transcribe, listSessions, loadSession, saveSession,
   removeSession, clearSessions, saveEnv, projectFiles, insideRoot, openInBrowser, isSilent, cleanTranscript, MEMORY_FILE,
   UCODE_VERSION, CREDIT, stopServers, closeBrowser, diffSince, INTERNAL, loadSkills, readServers, USER_MCP, projectMcpFile,
@@ -214,15 +214,18 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
   };
   /** The provider chosen in Settings, on the default model chosen for it there. */
   const switchTo = (name, id) => { switchProvider(name, id); everyAgent(); };
+  let touched = false; // the provider or model was changed from the window since the app opened
   const saved = await readApp();
+  const chosen = PROVIDERS[saved.provider] ? saved.provider : 'google';
   if (!process.env.UCODE_MODEL) {
-    try { switchTo(PROVIDERS[saved.provider] ? saved.provider : 'google', saved.defaults?.[saved.provider]); } catch { /* an old file */ }
+    try { switchTo(chosen, saved.defaults?.[chosen]); } catch { /* its models are not listed yet: below */ }
   }
-  // Each provider's free models are looked for in the background - now and every hour: the window never
-  // waits on the network. A default only on the full list goes on once the list is in, unless you picked another.
+  // Each provider's models are looked for in the background - now and every hour: the window never waits
+  // on the network. A provider or default only on the full lists goes on once they are in, unless you changed it.
   refreshModels().then(() => {
-    const wanted = saved.defaults?.[providerNow()];
-    if (wanted && !running && model() === PROVIDERS[providerNow()].default && modelList().some((m) => m.id === wanted)) switchTo(providerNow(), wanted);
+    const wanted = saved.defaults?.[chosen];
+    if (running || touched || process.env.UCODE_MODEL || (providerNow() === chosen && (!wanted || model() === wanted))) return;
+    try { switchTo(chosen, wanted); } catch { /* still not there: Google stays */ }
   }).catch(() => {});
   setInterval(() => refreshModels().catch(() => {}), 60 * 60_000).unref();
   // The chat list is read once now; after that only changed files are read again.
@@ -422,8 +425,8 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
         const models = hasKey(id) || id === providerNow() ? modelList(id) : [];
         const wanted = app.defaults?.[id];
         return {
-          id, name: p.name, note: p.note, env: p.env, hint: p.hint, link: p.link, steps: p.steps, hasKey: hasKey(id), models,
-          default: models.some((m) => m.id === wanted) ? wanted : p.default,
+          id, name: p.name, note: p.note, env: p.env ?? null, hint: p.hint ?? '', link: p.link, steps: p.steps, paid: Boolean(p.paid), local: Boolean(p.local),
+          hasKey: hasKey(id), models, default: models.some((m) => m.id === wanted) ? wanted : defaultModel(id),
         };
       }),
       keys: { vercel: Boolean(process.env.VERCEL_TOKEN), tavily: Boolean(process.env.TAVILY_API_KEY) },
@@ -481,6 +484,7 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     },
 
     'POST /api/model': async (b) => {
+      touched = true;
       setModel(String(b.id));
       everyAgent();
       return { model: model(), ready: hasKey() };
@@ -488,6 +492,10 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
 
     'POST /api/provider': async (b) => {
       const name = String(b.provider);
+      if (!PROVIDERS[name]) throw fail(400, 'no such provider');
+      touched = true;
+      // Ollama may have started since, and a paid provider's list may not be in yet: look again first.
+      if (PROVIDERS[name].local || !modelList(name).length) await refreshModels();
       const app = await readApp();
       switchTo(name, app.defaults?.[name]);
       await writeApp({ ...app, provider: name });
@@ -499,11 +507,18 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       const name = String(b.provider);
       const id = String(b.model);
       if (!PROVIDERS[name]) throw fail(400, 'no such provider');
-      if (!modelList(name).some((m) => m.id === id)) throw fail(400, `That is not one of ${PROVIDERS[name].name}'s free models.`);
+      if (!modelList(name).some((m) => m.id === id)) throw fail(400, `That is not one of ${PROVIDERS[name].name}'s models here.`);
+      touched = true;
       const app = await readApp();
       await writeApp({ ...app, defaults: { ...app.defaults, [name]: id } });
       if (name === providerNow()) { setModel(id); everyAgent(); }
       return { ok: true, model: model() };
+    },
+
+    // "Check again": the lists once more, for Ollama just started or a model just pulled.
+    'POST /api/models/refresh': async () => {
+      await refreshModels();
+      return { ok: true };
     },
 
     // /stats, for its popup: this chat's time, steps and tokens since the app opened it.
@@ -538,16 +553,18 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       }
       await saveEnv(name, value);
       resetConnection();
+      await refreshModels(); // a paid provider lists its models with the key
       // The provider in use has no key now, and another does: use that one - the one just added, if it was one.
       if (!hasKey()) {
         const other = owner && value !== null ? owner : Object.keys(PROVIDERS).find((p) => hasKey(p));
         if (other) {
-          const app = await readApp();
-          switchTo(other, app.defaults?.[other]);
-          await writeApp({ ...app, provider: other });
+          try {
+            const app = await readApp();
+            switchTo(other, app.defaults?.[other]);
+            await writeApp({ ...app, provider: other });
+          } catch { /* it has no models yet: the key is saved all the same */ }
         }
       }
-      refreshModels().catch(() => {});
       return { ok: true, message: value === null ? 'Key removed' : 'Key saved — it works', model: model() };
     },
 
@@ -614,7 +631,10 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
       const browsers = process.platform === 'win32'
         ? [['Microsoft Edge', path.join(process.env['ProgramFiles(x86)'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')], ['Google Chrome', path.join(process.env.ProgramFiles ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe')]]
         : [['Google Chrome', '/Applications/Google Chrome.app'], ['Microsoft Edge', '/Applications/Microsoft Edge.app'], ['Chrome', '/usr/bin/google-chrome'], ['Chromium', '/usr/bin/chromium']];
-      const keys = [...Object.values(PROVIDERS).map((p) => [p.env, `${p.name} key`]), ['VERCEL_TOKEN', 'Vercel token (putting apps online)']];
+      const keys = [
+        ...Object.entries(PROVIDERS).filter(([id, p]) => p.env && (id === 'google' || (process.env[p.env] || '').trim())).map(([, p]) => [p.env, `${p.name} key`]),
+        ['VERCEL_TOKEN', 'Vercel token (putting apps online)'],
+      ];
       const [net, ...problems] = await Promise.all([
         ask('https://www.google.com/generate_204'),
         ...keys.map(([env]) => ((process.env[env] || '').trim() ? checkKey(env, process.env[env].trim()) : null)),
