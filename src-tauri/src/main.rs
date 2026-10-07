@@ -63,24 +63,51 @@ impl Server {
     }
 }
 
-/// A newer release on GitHub is downloaded and installed as soon as the app opens, and the app
-/// starts again on it. No answer, or no network: this run simply carries on as it is.
+/// A newer release on GitHub is downloaded as soon as the app opens, the server is stopped, and the
+/// update goes on (on Windows its installer closes the app and opens the new one). No answer, or no
+/// network: this run carries on as it is. Every step goes in update.log, in the app's log folder.
 fn update_now(handle: AppHandle) {
     use tauri_plugin_updater::UpdaterExt;
     tauri::async_runtime::spawn(async move {
-        let Ok(updater) = handle.updater() else { return };
-        let Ok(Some(update)) = updater.check().await else { return };
-        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            handle.state::<Server>().stop(true);
-            handle.restart();
+        let updater = match handle.updater() {
+            Ok(updater) => updater,
+            Err(err) => return note(&handle, &format!("updater unavailable: {err}")),
+        };
+        let update = match updater.check().await {
+            Ok(Some(update)) => update,
+            Ok(None) => return note(&handle, &format!("up to date ({})", handle.package_info().version)),
+            Err(err) => return note(&handle, &format!("check failed: {err}")),
+        };
+        note(&handle, &format!("found {}, downloading", update.version));
+        let bytes = match update.download(|_, _| {}, || {}).await {
+            Ok(bytes) => bytes,
+            Err(err) => return note(&handle, &format!("download failed: {err}")),
+        };
+        handle.state::<Server>().stop(true);
+        note(&handle, &format!("installing {}", update.version));
+        match update.install(bytes) {
+            Ok(()) => handle.restart(),
+            Err(err) => note(&handle, &format!("install failed: {err}")),
         }
     });
+}
+
+/// One line in update.log, so an update that does not happen can be explained.
+fn note(handle: &AppHandle, line: &str) {
+    use std::io::Write;
+    let Ok(dir) = handle.path().app_log_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("update.log")) {
+        let _ = writeln!(file, "{secs} {line}");
+    }
 }
 
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .manage(Server::default())
         .setup(|app| {
             update_now(app.handle().clone());
@@ -89,6 +116,7 @@ fn main() {
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(900.0, 600.0)
                 .center()
+                .maximized(true)
                 // No system frame: the pages draw their own title bar and window buttons.
                 // The shadow keeps the drop shadow and thin border on Windows 10/11.
                 .decorations(false)
@@ -195,6 +223,8 @@ fn shell(cmdline: &str, home: Option<&Path>) -> Command {
         cmd
     };
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    // The server watches this app and stops when it is gone.
+    cmd.env("UCODE_DESKTOP_PID", std::process::id().to_string());
     if let Some(home) = home {
         cmd.current_dir(home);
     }

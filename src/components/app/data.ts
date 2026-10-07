@@ -8,6 +8,8 @@ export type Keys = { google: boolean; openrouter: boolean; vercel: boolean; tavi
 
 export type State = {
   version: string;
+  appVersion?: string;
+  ucodeVersion?: string;
   credit: string;
   model: string;
   provider?: Provider; // missing from an older ucode: then it is the current model's

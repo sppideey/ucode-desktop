@@ -54,3 +54,7 @@ if (process.argv.includes('--open')) openWindow(app.url);
 const quit = async () => { await app.close().catch(() => {}); process.exit(0); };
 process.on('SIGINT', quit);
 process.on('SIGTERM', quit);
+// The desktop app can close without stopping it (an update's installer closes it at once):
+// the server follows it out within a few seconds, rather than staying on in the background.
+const owner = Number(process.env.UCODE_DESKTOP_PID);
+if (owner) setInterval(() => { try { process.kill(owner, 0); } catch { quit(); } }, 3000);

@@ -80,6 +80,9 @@ type Props = {
   name: string;
   onName: (n: string) => void;
   version: string;
+  ucodeVersion?: string;
+  updateNote: string;
+  onCheckUpdate: () => void;
   credit: string;
   onChanged: () => void;
   onLearn: (folder: string) => void;
@@ -401,10 +404,15 @@ export function SettingsDialog(p: Props) {
             <>
               <div className="flex flex-col items-center pb-5 pt-3 text-center">
                 <Logo className="size-12" />
-                <p className="mt-3 text-[15px] font-semibold">ucode</p>
-                <p className="text-[12px] text-muted-foreground">Version {p.version}</p>
+                <p className="mt-3 text-[15px] font-semibold">ucode desktop</p>
+                <p className="text-[12px] text-muted-foreground">Version {p.version}{p.ucodeVersion ? ` · ucode ${p.ucodeVersion} inside` : ""}</p>
                 <p className="mt-2 text-[13px]">{p.credit}</p>
               </div>
+              <Group footer={p.updateNote || "New versions install by themselves: when the app opens, and every ten minutes while it is open."}>
+                <button type="button" className={tapRow} onClick={p.onCheckUpdate}>
+                  <span className="flex-1">Check for updates</span> <ChevronRight className="size-3.5 text-muted-foreground" />
+                </button>
+              </Group>
               <Group footer="Free software under the AGPL-3.0, with no warranty.">
                 <button type="button" className={tapRow} onClick={() => openLink("https://github.com/sppideey/ucode-agent")}>
                   <GitBranch className="size-3.5 text-muted-foreground" /> <span className="flex-1">GitHub</span> <ChevronRight className="size-3.5 text-muted-foreground" />

@@ -227,11 +227,16 @@ function appOf(session) {
 async function appsIn(folder) {
   const found = [];
   const isApp = (dir) => existsSync(path.join(dir, 'index.html')) || existsSync(path.join(dir, 'package.json'));
-  if (isApp(folder)) return [{ name: path.basename(folder), path: folder, folder: path.dirname(folder), at: statSync(folder).mtimeMs }];
+  // The name the app gives itself (its page's <title>), else its folder's.
+  const nameOf = (dir) => {
+    try { return /<title>\s*([^<]{1,60}?)\s*<\/title>/i.exec(readFileSync(path.join(dir, 'index.html'), 'utf8'))?.[1] || path.basename(dir); } catch { return path.basename(dir); }
+  };
+  // An app saved straight into the folder is one app; the apps in its subfolders are still listed.
+  if (isApp(folder)) found.push({ name: nameOf(folder), path: folder, folder, at: statSync(folder).mtimeMs });
   for (const e of await fs.readdir(folder, { withFileTypes: true }).catch(() => [])) {
     if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
     const dir = path.join(folder, e.name);
-    if (isApp(dir)) found.push({ name: e.name, path: dir, folder, at: statSync(dir).mtimeMs });
+    if (isApp(dir)) found.push({ name: nameOf(dir), path: dir, folder, at: statSync(dir).mtimeMs });
   }
   return found;
 }
@@ -438,6 +443,8 @@ export async function startApp({ port = 0, uiDir = UI_DIR, log = () => {} } = {}
     const folders = new Set([...app.projects]);
     return {
       version: `${VERSION} · ucode ${UCODE_VERSION}`,
+      appVersion: VERSION,
+      ucodeVersion: UCODE_VERSION,
       credit: CREDIT,
       model: model(),
       mode,

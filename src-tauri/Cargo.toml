@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only - ucode, made and tested by om dixit. Additional terms: see NOTICE.
 [package]
 name = "ucode"
-version = "1.2.0"
+version = "1.2.1"
 description = "ucode desktop: a native window around the free coding agent. Made and tested by om dixit."
 authors = ["om dixit"]
 license = "AGPL-3.0-only"
@@ -20,6 +20,8 @@ tauri-plugin-updater = "2"
 serde_json = "1"
 # The system's own folder picker, opened at once (no PowerShell to start first).
 tauri-plugin-dialog = "2"
+# Starts the app again after the page puts an update on (on a Mac).
+tauri-plugin-process = "2"
 
 [profile.release]
 codegen-units = 1

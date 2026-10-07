@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type ApiError, get, post } from "@/lib/api";
+import { type Update, canUpdate, checkForUpdate, installUpdate } from "@/lib/updates";
 import { cn } from "@/lib/utils";
 import { Chat } from "./chat";
 import { CommandPalette } from "./command-palette";
@@ -101,6 +102,44 @@ export function AppShell() {
   useEffect(() => { busyRef.current = busyChat; }, [busyChat]);
 
   const refresh = useCallback(() => get<State>("state").then(setState).catch(() => {}), []);
+
+  // Updates: looked for every ten minutes (the app itself looks the moment it opens), and put on
+  // as soon as ucode is not in the middle of a job. The app closes and opens again on the new version.
+  const waiting = useRef<Update | null>(null);
+  const [updateNote, setUpdateNote] = useState("");
+  const putOn = useCallback(async (update: Update) => {
+    waiting.current = null;
+    setUpdateNote(`Updating to ${update.version}…`);
+    toast.loading(`Updating ucode to ${update.version}`, { description: "It opens again by itself in a moment." });
+    try {
+      await installUpdate(update);
+    } catch (e) {
+      setUpdateNote(`The update to ${update.version} did not install: ${(e as Error).message}`);
+      toast.dismiss();
+    }
+  }, []);
+  const lookForUpdate = useCallback(async (asked = false) => {
+    if (!canUpdate()) { if (asked) setUpdateNote("Updates come through the desktop app."); return; }
+    if (asked) setUpdateNote("Checking…");
+    try {
+      const update = await checkForUpdate();
+      if (!update) { if (asked) setUpdateNote("You have the newest version."); return; }
+      if (busyRef.current) {
+        waiting.current = update;
+        setUpdateNote(`Version ${update.version} is ready. It goes on when ucode finishes this job.`);
+      } else await putOn(update);
+    } catch (e) {
+      if (asked) setUpdateNote(`Could not check for updates: ${(e as Error).message}`);
+    }
+  }, [putOn]);
+  useEffect(() => {
+    const first = setTimeout(() => lookForUpdate(), 90_000);
+    const every = setInterval(() => lookForUpdate(), 10 * 60_000);
+    return () => { clearTimeout(first); clearInterval(every); };
+  }, [lookForUpdate]);
+  useEffect(() => {
+    if (!busyChat && waiting.current) putOn(waiting.current);
+  }, [busyChat, putOn]);
 
   // Everything the window shows starts here.
   useEffect(() => {
@@ -567,7 +606,10 @@ export function AppShell() {
         defaultFolder={state.defaultFolder}
         name={name}
         onName={saveName}
-        version={state.version}
+        version={state.appVersion ?? state.version}
+        ucodeVersion={state.ucodeVersion}
+        updateNote={updateNote}
+        onCheckUpdate={() => lookForUpdate(true)}
         credit={state.credit}
         onChanged={refresh}
         onLearn={(f) => send("/init", [], { folder: f })}
