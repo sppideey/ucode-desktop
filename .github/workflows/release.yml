@@ -1,0 +1,63 @@
+# Builds ucode desktop for Windows and Mac and publishes both installers as a
+# GitHub release, whenever a version tag (v1.0.0, ...) is pushed.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --bundles nsis
+          - os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: The page
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: The copy of ucode the app carries
+        run: npm run engine
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ucode desktop ${{ github.ref_name }}'
+          releaseBody: |
+            ucode in its own window — the free AI coding agent, without the terminal. Made and tested by om dixit.
+
+            **Install:** first install [Node.js](https://nodejs.org) (LTS). Then:
+            - **Windows:** download `ucode_*_x64-setup.exe` and run it (if Windows warns: More info → Run anyway).
+            - **Mac:** download `ucode_*_universal.dmg`, drag ucode into Applications, and the first time right-click ucode → Open → Open.
+
+            Then open ucode → Settings → Keys and add a free Google or OpenRouter key.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

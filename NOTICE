@@ -1,0 +1,45 @@
+ucode desktop
+Copyright (C) 2026 Om Dixit
+
+ucode desktop is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License, version 3 only, as
+published by the Free Software Foundation (the file LICENSE), with the
+additional terms below, which its section 7 permits.
+
+ucode desktop is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+details.
+
+
+ADDITIONAL TERMS (section 7 of the GNU AGPL, version 3)
+
+1. Author attribution - section 7(b).
+   Every copy of ucode desktop, and every modified version of it, must keep
+   the author attribution
+
+       made and tested by om dixit
+
+   in the Appropriate Legal Notices it displays (sections 0 and 5(d) of the
+   licence) - in ucode desktop, Settings > About - and must keep this NOTICE
+   file.
+
+2. Origin - section 7(c).
+   A modified version must not be presented as the original or as the work
+   of Om Dixit, and must be marked in a reasonable way as changed from it,
+   for example in its name or version and in this NOTICE file.
+
+3. Names - section 7(e).
+   No right is granted to use the names "ucode", "ucode agent" or "ucode
+   desktop", or ucode's logo, as the name or mark of another work.
+
+
+OTHER LICENCES IN THIS REPOSITORY
+
+- The documentation (README.md, CONTRIBUTING.md) is under Creative Commons
+  Attribution 4.0 International (LICENSE-DOCS).
+- src/components/ui/ is adapted from shadcn/ui (MIT License, Copyright (c)
+  2023 shadcn); its own licence applies to that code.
+- ucode desktop runs ucode (https://github.com/sppideey/ucode-agent), which is
+  under its own licence and NOTICE.
+- Contributing: see CONTRIBUTING.md.

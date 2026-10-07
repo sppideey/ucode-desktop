@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only - ucode, made and tested by om dixit. Additional terms: see NOTICE. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>ucode</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- The window has no system frame: this strip is the title bar. -->
+  <header class="titlebar" data-tauri-drag-region>
+    <span class="title" data-tauri-drag-region>ucode</span>
+    <div class="controls">
+      <button type="button" id="min" aria-label="Minimise" title="Minimise">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10"/></svg>
+      </button>
+      <button type="button" id="max" aria-label="Maximise" title="Maximise">
+        <svg class="when-normal" viewBox="0 0 10 10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" rx="1"/></svg>
+        <svg class="when-max" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/><rect x=".5" y="2.5" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button type="button" id="close" class="close" aria-label="Close" title="Close">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <img class="logo" src="icon.svg" alt="" width="88" height="88">
+
+    <section class="starting" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <p class="status">Starting ucode…</p>
+    </section>
+
+    <!-- Shown by the app when ucode could not be started. -->
+    <section class="help" aria-live="assertive">
+      <h1>ucode needs Node.js and ucode installed</h1>
+      <ol>
+        <li>Install Node.js from <b>nodejs.org</b> (the big LTS button).</li>
+        <li>Open <b>PowerShell</b> (or Terminal) and type:<code>npm i -g ucode-agent</code></li>
+        <li>Open ucode again.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
