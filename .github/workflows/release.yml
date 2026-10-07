@@ -58,11 +58,26 @@ jobs:
             ucode in its own window — the free AI coding agent, without the terminal. Made and tested by om dixit.
 
             **Install:** first install [Node.js](https://nodejs.org) (LTS). Then:
-            - **Windows:** download `ucode_*_x64-setup.exe` and run it (if Windows warns: More info → Run anyway).
-            - **Mac:** download `ucode_*_universal.dmg`, drag ucode into Applications, and the first time right-click ucode → Open → Open.
+            - **Windows:** download `ucode-windows-setup.exe` (or `ucode_*_x64-setup.exe`) and run it (if Windows warns: More info → Run anyway).
+            - **Mac:** download `ucode-mac.dmg` (or `ucode_*_universal.dmg`), drag ucode into Applications, and the first time right-click ucode → Open → Open.
 
-            Then open ucode → Settings → Keys and add a free Google or OpenRouter key.
+            Then open ucode → Settings → Models and add a free Google key (Gemini is the default), or any other provider's.
           includeUpdaterJson: true
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # The same installers under names that never change, so one link always gets the newest:
+  # releases/latest/download/ucode-windows-setup.exe and releases/latest/download/ucode-mac.dmg.
+  stable-names:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*_x64-setup.exe' -p '*_universal.dmg'
+          mv ./*_x64-setup.exe ucode-windows-setup.exe
+          mv ./*_universal.dmg ucode-mac.dmg
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" ucode-windows-setup.exe ucode-mac.dmg --clobber

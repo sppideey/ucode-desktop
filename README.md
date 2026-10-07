@@ -20,11 +20,13 @@ Say what you want built, watch it being made, click around in it, undo anything.
 ## Install
 
 1. Install [Node.js](https://nodejs.org) (the LTS button). ucode itself comes with the app.
-2. Download from [Releases](https://github.com/sppideey/ucode-desktop/releases):
-   - **Windows:** `ucode_x.y.z_x64-setup.exe` — run it. Windows may warn because the app is new and unsigned: **More info → Run anyway**.
-   - **Mac:** `ucode_x.y.z_universal.dmg` — open it and drag ucode into Applications. The first time, **right-click ucode → Open → Open** (the app is not signed by Apple yet).
+2. Download the newest version (these links always get it):
+   - **Windows:** [ucode-windows-setup.exe](https://github.com/sppideey/ucode-desktop/releases/latest/download/ucode-windows-setup.exe) — run it. Windows may warn because the app is new and unsigned: **More info → Run anyway**.
+   - **Mac:** [ucode-mac.dmg](https://github.com/sppideey/ucode-desktop/releases/latest/download/ucode-mac.dmg) — open it and drag ucode into Applications. The first time, **right-click ucode → Open → Open** (the app is not signed by Apple yet).
 3. Open ucode. In **Settings → Models**, add a free key — [Google](https://aistudio.google.com/apikey) is the default — or any other provider's key.
-   To share apps online, add a free Vercel token there too — the Keys page shows the steps.
+   To share apps online, add a free Vercel token under **Settings → Keys** — it shows the steps.
+
+   Every version is also on the [Releases](https://github.com/sppideey/ucode-desktop/releases) page.
 
 The terminal `ucode` is a separate program and is not changed by this app.
 
